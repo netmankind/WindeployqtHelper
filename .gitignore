@@ -1,0 +1,38 @@
+# ---- Qt Creator / IDE ----
+*.user
+*.autosave
+*.pro.user
+.qmake.stash
+.vscode/
+.idea/
+*.swp
+
+# ---- 构建中间产物 ----
+Makefile
+Makefile.*
+*.o
+*.obj
+*.a
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+rcc_*.cpp
+*.prl
+*.qm
+
+# ---- 构建输出目录（in-source 构建时） ----
+Win32/
+Win64/
+debug/
+release/
+
+# ---- 二进制产物 ----
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+
+# ---- 运行期文件 ----
+config.ini
+deploy_log.txt
