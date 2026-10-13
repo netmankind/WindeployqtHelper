@@ -1,5 +1,7 @@
 # WindeployqtHelper
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Qt 应用一键部署打包助手（GUI 工具）：图形化封装 `windeployqt` 部署流程，并可追加 **Enigma Virtual Box** 单文件便携打包，支持 **Qt 5.15 / Qt 6** 双版本、**MinGW / MSVC** 双编译器。
 
 ## 功能特性
@@ -135,4 +137,4 @@ WindeployqtHelper/
 
 ## License
 
-暂无指定，开源发布前请按需添加 LICENSE 文件。
+[MIT](LICENSE) © netmankind
