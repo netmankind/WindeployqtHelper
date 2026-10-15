@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QProcessEnvironment>
 #include <QTextStream>
 
 #include "ui_mainwindow.h"
@@ -308,6 +309,16 @@ void MainWindow::on_btnStartDeploy_clicked()
     deployProcess->setProgram(windeployqt);
     deployProcess->setArguments(args);
     deployProcess->setWorkingDirectory(qtBinDir);
+
+    // 将配套 MinGW 工具链 bin 前置到 PATH，避免 windeployqt 从 PATH 中其它 MinGW 目录复制版本不匹配的运行库 DLL
+    QString mingwRuntimeDir = findMinGwRuntimeDir(qtBinDir);
+    if(!mingwRuntimeDir.isEmpty())
+    {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert("PATH", mingwRuntimeDir + QDir::listSeparator() + env.value("PATH"));
+        deployProcess->setProcessEnvironment(env);
+        appendLog(QString("ℹ️ 已前置 MinGW 运行库目录到 PATH：%1").arg(mingwRuntimeDir));
+    }
     deployProcess->start();
 }
 
@@ -326,6 +337,8 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
     {
         appendLog("✅ windeployqt执行完成");
         QString outputDir = ui->edtOutputDir->text().trimmed();
+        // windeployqt 完成后校正 MinGW 运行库 DLL 来源，防止输出目录混入从其它 MinGW 目录复制来的版本
+        fixMinGwRuntimeDlls(outputDir, findMinGwRuntimeDir(ui->edtQtBin->text().trimmed()));
         if(ui->chkEnigmaPack->isChecked())
         {
             QString enigmaConsolePath = ui->edtEnigmaVbPath->text().trimmed();
@@ -430,6 +443,92 @@ bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType
     }
     appendLog(QString("✅ 识别编译器类型：%1").arg(compilerType));
     return true;
+}
+
+// 定位与所选 Qt Bin 配套的 MinGW 工具链 bin 目录（含 libstdc++-6.dll 等运行库 DLL）
+QString MainWindow::findMinGwRuntimeDir(const QString &qtBinDir) const
+{
+    // 1) Qt5 的 mingw kit（如 E:/Qt/5.15.2/mingw81_64/bin）自身就带运行库 DLL
+    QDir qtBin(qtBinDir);
+    if(QFile::exists(qtBin.filePath("libstdc++-6.dll")))
+    {
+        return qtBin.absolutePath();
+    }
+
+    // 2) 官方安装布局：qtBinDir = <Qt根>/<版本>/<kit>/bin，工具链在 <Qt根>/Tools/mingw*/bin
+    QDir qtRoot = qtBin;
+    qtRoot.cdUp();   // <Qt根>/<版本>/<kit>
+    qtRoot.cdUp();   // <Qt根>/<版本>
+    qtRoot.cdUp();   // <Qt根>
+    const QDir toolsDir(qtRoot.filePath("Tools"));
+    QStringList candidates;
+    if(toolsDir.exists())
+    {
+        const QStringList mingwDirs = toolsDir.entryList(QStringList() << "mingw*", QDir::Dirs | QDir::NoDotAndDotDot);
+        for(const QString &dirName: mingwDirs)
+        {
+            QDir binDir(toolsDir.filePath(dirName + "/bin"));
+            if(QFile::exists(binDir.filePath("g++.exe")) && QFile::exists(binDir.filePath("libstdc++-6.dll")))
+            {
+                candidates << binDir.absolutePath();
+            }
+        }
+    }
+    if(!candidates.isEmpty())
+    {
+        candidates.sort();   // 字典序取最后（如 mingw1310_64 > mingw1120_64 > mingw810_64），通常对应最高 Qt 版本
+        return candidates.last();
+    }
+    return QString();
+}
+
+// windeployqt 部署完成后，把输出目录中的 MinGW 运行库 DLL 从配套工具链重新复制覆盖，
+// 防止 windeployqt 从 PATH 中其它 MinGW 目录复制来版本不匹配的 DLL
+void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &runtimeDir)
+{
+    if(runtimeDir.isEmpty())
+    {
+        appendLog("⚠️ 未定位到 MinGW 运行库目录，跳过运行库校正");
+        return;
+    }
+    const QStringList runtimeDlls = QStringList()
+        << "libstdc++-6.dll"
+        << "libgcc_s_seh-1.dll"
+        << "libgcc_s_dw2-1.dll"
+        << "libwinpthread-1.dll";
+    for(const QString &dllName: runtimeDlls)
+    {
+        QFileInfo src(runtimeDir + "/" + dllName);
+        if(!src.exists())
+        {
+            continue;   // 工具链无此 DLL（如 32 位无 seh）则跳过
+        }
+        QFileInfo dst(outputDir + "/" + dllName);
+        if(!dst.exists())
+        {
+            continue;   // 输出目录没有该 DLL（如 MSVC 部署）则不动
+        }
+        QString srcPath = QDir::toNativeSeparators(src.absoluteFilePath());
+        QString dstPath = QDir::toNativeSeparators(dst.absoluteFilePath());
+        // 先复制临时文件再替换，避免复制失败时破坏原文件
+        if(QFile::copy(src.absoluteFilePath(), dst.absoluteFilePath() + ".tmp"))
+        {
+            QFile::remove(dst.absoluteFilePath());
+            if(QFile::rename(dst.absoluteFilePath() + ".tmp", dst.absoluteFilePath()))
+            {
+                appendLog(QString("✅ 运行库校正：%1 ← %2（%3 字节）").arg(dstPath, srcPath).arg(src.size()));
+            }
+            else
+            {
+                QFile::remove(dst.absoluteFilePath() + ".tmp");
+                appendLog(QString("⚠️ 运行库校正失败：无法替换 %1").arg(dstPath));
+            }
+        }
+        else
+        {
+            appendLog(QString("⚠️ 运行库校正失败：无法复制 %1").arg(srcPath));
+        }
+    }
 }
 
 bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe)
