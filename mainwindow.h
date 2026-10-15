@@ -59,7 +59,7 @@ private:
 
     // ---- Enigma Virtual Box 11.30 的 .evb 工程文件为 XML 格式 ----
     static QString escapeXml(const QString &text);
-    static void appendEvbFolder(QTextStream &stream, const QDir &dir, const QString &virtualName, int depth);
+    void appendEvbFolder(QTextStream &stream, const QDir &dir, const QString &virtualName, int depth);
 
     // ---- MinGW 运行库 DLL 来源校正（windeployqt 可能从 PATH 其它 MinGW 目录复制错版本） ----
     QString findMinGwRuntimeDir(const QString &qtBinDir) const;

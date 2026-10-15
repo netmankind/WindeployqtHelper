@@ -687,6 +687,13 @@ void MainWindow::appendEvbFolder(QTextStream &stream, const QDir &dir, const QSt
     const QFileInfoList subDirList = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
     for(const QFileInfo &subDirInfo : subDirList)
     {
+        // 跳过运行时数据目录：历史记录db/导出文件等由程序动态生成删除，打包瞬间文件可能不存在或正被占用，
+        // 会导致 Enigma 报 "File does not exist"；且运行时写入不回写 Single，打入也无益
+        if(subDirInfo.fileName().compare(QStringLiteral("data"), Qt::CaseInsensitive) == 0)
+        {
+            appendLog(QString("ℹ️ 跳过运行时数据目录：%1").arg(subDirInfo.absoluteFilePath()));
+            continue;
+        }
         appendEvbFolder(stream, QDir(subDirInfo.absoluteFilePath()), subDirInfo.fileName(), depth + 1);
     }
 
