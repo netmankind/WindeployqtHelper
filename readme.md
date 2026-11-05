@@ -9,6 +9,7 @@ Qt 应用一键部署打包助手（GUI 工具）：图形化封装 `windeployqt
 - **图形化配置**：目标 EXE、Qt Bin 目录、输出目录、QML 目录、Enigma 控制台路径，一键开始打包。
 - **选择对话框跟随输入框**：文件/目录选择器自动定位到当前输入框已填的路径（无效才回退到用户主目录）。
 - **自动识别编译器**：调用 `qmake -v` 识别 MinGW / MSVC，并在 windeployqt 失败时提示「版本/编译器不匹配」（如用 Qt6 的 windeployqt 部署 Qt5 程序、MinGW 版部署 MSVC 程序）。
+- **MinGW 运行库来源校正**：windeployqt 从系统 PATH 复制 `libstdc++-6.dll`、`libgcc_s_seh-1.dll`、`libwinpthread-1.dll` 等运行库，PATH 中存在多个 MinGW 时可能复制到错误版本。工具自动定位配套工具链，部署前前置 PATH、部署后强制校正运行库 DLL（详见[技术要点](#mingw-运行库来源校正)）。
 - **安全保护**：
   - 输出目录 = 源 EXE 所在目录时，跳过删除/复制，避免误删原主程序；
   - 清空旧目录时强制保留源 EXE，并支持自定义保留规则（通配符）。
@@ -16,7 +17,8 @@ Qt 应用一键部署打包助手（GUI 工具）：图形化封装 `windeployqt
 - **Enigma 单文件打包**：
   - 自动生成 EVB 11.30 所需的 **XML** 工程文件（`.evb`），递归打包输出目录全部文件；
   - 单文件命名：`<目标EXE基名>_Single.exe`，**输出到输出目录内**；
-  - 打包时自动跳过已存在的 `*_Single.exe`，防止旧单文件被重复打入。
+  - 打包时自动跳过已存在的 `*_Single.exe`，防止旧单文件被重复打入；
+  - 自动跳过运行时数据目录 `data`（历史记录 db / 导出文件等由程序动态增删的文件），避免 Enigma 报 `File does not exist`；运行时数据打进单文件本就无益（程序写入不回写 Single）。
 - **配置持久化**：`config.ini` 保存/加载全部配置。
 - **日志面板**：输出 windeployqt / Enigma 完整过程，可保存为 txt。
 
@@ -111,7 +113,15 @@ Enigma Virtual Box 11.30 的 `.evb` 工程文件为 **XML 格式**（旧版 INI 
 </Project>
 ```
 
-源码内 `escapeXml()` 处理特殊字符转义，`appendEvbFolder()` 递归生成文件树。
+源码内 `escapeXml()` 处理特殊字符转义，`appendEvbFolder()` 递归生成文件树，并在递归时**跳过名为 `data` 的目录**（大小写不敏感，日志输出 `ℹ️ 跳过运行时数据目录：...`）。
+
+### MinGW 运行库来源校正
+
+`windeployqt` 复制 MinGW 运行库（`libstdc++-6.dll`、`libgcc_s_seh-1.dll`、`libwinpthread-1.dll` 等）时从系统 `PATH` 取文件；若 PATH 含多个 MinGW 目录（如同时安装 Qt5 / Qt6 工具链），可能复制到错误版本。工具分三步保证正确：
+
+1. **定位**：`findMinGwRuntimeDir()` 优先取 Qt kit 自带运行库（如 Qt5 的 `mingw81_64\bin`）；Qt6 无自带运行库时向上探测 `Qt/Tools/mingw*` 工具链；
+2. **前置 PATH**：调用 windeployqt 前把配套工具链 `bin` 插入 PATH 首位，让它从正确来源复制；
+3. **强制校正**：部署完成后 `fixMinGwRuntimeDlls()` 用配套版本覆盖 4 个运行库 DLL，杜绝错误版本混入部署目录（即使 windeployqt 已复制错）。
 
 ### Qt5 / Qt6 兼容
 
@@ -121,6 +131,7 @@ Enigma Virtual Box 11.30 的 `.evb` 工程文件为 **XML 格式**（旧版 INI 
 
 - **`Warning: Cannot find any version of the dxcompiler.dll and dxil.dll`**：纯 QWidgets 程序无需 D3D12 渲染后端，可忽略（该警告仅与 Qt Quick 的 D3D12 后端相关）。
 - **windeployqt 报 `does not seem to be a Qt executable`**：目标 EXE 与所选 Qt Bin 的版本/编译器不匹配，切换为对应的 Qt Bin 目录即可。
+- **Enigma 报 `File does not exist` / `Cannot open file`**：部署目录内的运行时数据目录（如 `data`，含按天生成/清理的历史记录 db、导出文件）在打包瞬间文件可能已被删除或正被占用。工具已自动跳过名为 `data` 的目录；其它动态数据目录请勿放入部署目录。
 
 ## 目录结构
 
