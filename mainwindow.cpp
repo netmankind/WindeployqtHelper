@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QCoreApplication>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -340,19 +341,38 @@ void MainWindow::on_btnStartDeploy_clicked()
     //输出目录若与目标exe所在目录相同，源exe必须始终保留，防止清空旧目录时删掉原文件
     QFileInfo exeInfo(exePath);
     QDir      outDir(outputDir);
+    QString   destExe = outDir.filePath(exeInfo.fileName());
+    //就地打包：输出目录就是源 exe 所在目录，此时目标文件与源文件是同一个
+    const bool inPlacePack = (exeInfo.canonicalFilePath() == QFileInfo(destExe).canonicalFilePath());
+    //打包自身：目标 exe 就是当前正在运行的这个程序
+    const bool packSelf = (QFileInfo(QCoreApplication::applicationFilePath()).canonicalFilePath() == exeInfo.canonicalFilePath());
+    if(packSelf)
+    {
+        appendLog(QStringLiteral("ℹ️ 检测到正在打包程序自身：运行中的 exe 与已加载的 DLL 被系统锁定，"
+                                 "已存在的同名文件不会覆盖，建议另选一个空输出目录"));
+    }
+
     if(ui->chkCleanOld->isChecked())
     {
-        appendLog(QStringLiteral("⚠️ 清空旧输出目录（保留目录本身，跳过配置的保留文件）"));
-        QString     rawKeep  = ui->edtKeepFiles->text().trimmed();
-        QStringList keepList = rawKeep.split(QStringLiteral(","), Qt::SkipEmptyParts);
-        keepList << exeInfo.fileName();
-        clearDirectoryKeepSelf(outDir, keepList);
+        if(inPlacePack)
+        {
+            //就地打包时清空会把目录里的第三方 DLL 一起删掉，正在使用的文件也删不掉，
+            //所以这种情况下跳过清空，只补部署缺失的文件
+            appendLog(QStringLiteral("⚠️ 输出目录与源 exe 同目录，跳过“清空旧目录”，避免误删目录内其它 DLL"));
+        }
+        else
+        {
+            appendLog(QStringLiteral("⚠️ 清空旧输出目录（保留目录本身，跳过配置的保留文件）"));
+            QString     rawKeep  = ui->edtKeepFiles->text().trimmed();
+            QStringList keepList = rawKeep.split(QStringLiteral(","), Qt::SkipEmptyParts);
+            keepList << exeInfo.fileName();
+            clearDirectoryKeepSelf(outDir, keepList);
+        }
     }
     outDir.mkpath(QStringLiteral("."));
 
     //拷贝exe到输出目录：目标与源为同一文件（输出目录=源exe目录）时跳过删除与复制，避免删掉原exe
-    QString destExe = outDir.filePath(exeInfo.fileName());
-    if(exeInfo.canonicalFilePath() == QFileInfo(destExe).canonicalFilePath())
+    if(inPlacePack)
     {
         appendLog(QStringLiteral("ℹ️ 输出目录与源exe目录相同，主程序已就位，无需复制：%1").arg(destExe));
     }
