@@ -77,5 +77,8 @@ FORMS += \
 #RESOURCES += resources.qrc
 
 win32 {
-    #RC_FILE += resources/WindeployqtHelper.rc
+    # 用自定义 rc 取代 qmake 自动生成的版本资源：qmake 写 rc 时会把 .pro 里的中文
+    # 误解成 GBK 再按 UTF-8 输出，导致 exe 属性里的“产品名”乱码（Qt6 明显）。
+    # 代价：QMAKE_TARGET_* / VERSION 不再生效，版本数字改由 rc 与 version.cpp 各自维护。
+    RC_FILE += resources/WindeployqtHelper.rc
 }
