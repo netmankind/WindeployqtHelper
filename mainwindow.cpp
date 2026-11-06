@@ -269,11 +269,27 @@ void MainWindow::on_btnOpenOutput_clicked()
 
 void MainWindow::on_btnSelectQmlDir_clicked()
 {
-    QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择QML源码目录"), dialogStartDir(ui->edtQmlDir->text(), true));
-    if(!dir.isEmpty())
+    //支持多个 QML 目录：输入框内用英文分号分隔，再点一次“选择”就追加到末尾
+    const QStringList currentDirs = ui->edtQmlDir->text().split(QStringLiteral(";"), Qt::SkipEmptyParts);
+    const QString startDir = currentDirs.isEmpty() ? QString() : currentDirs.first().trimmed();
+
+    QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择QML源码目录"), dialogStartDir(startDir, true));
+    if(dir.isEmpty())
+    {
+        return;
+    }
+    dir = QDir::toNativeSeparators(dir);
+    if(currentDirs.contains(dir))
+    {
+        return;    //同一个目录不重复添加
+    }
+    QString newText = ui->edtQmlDir->text().trimmed();
+    if(newText.isEmpty())
     {
         ui->edtQmlDir->setText(dir);
+        return;
     }
+    ui->edtQmlDir->setText(newText + QStringLiteral(";") + dir);
 }
 
 void MainWindow::on_btnSelectEnigmaVb_clicked()
@@ -358,9 +374,15 @@ void MainWindow::on_btnStartDeploy_clicked()
     {
         args << QStringLiteral("--multimedia");
     }
-    if(!ui->edtQmlDir->text().trimmed().isEmpty())
+    //QML 目录可填多个（英文分号分隔）：windeployqt 支持重复传 --qmldir，每个目录各扫一遍 import
+    const QStringList qmlDirs = ui->edtQmlDir->text().split(QStringLiteral(";"), Qt::SkipEmptyParts);
+    for(const QString &qmlDir: qmlDirs)
     {
-        args << QStringLiteral("--qmldir") << ui->edtQmlDir->text().trimmed();
+        const QString trimmedDir = qmlDir.trimmed();
+        if(!trimmedDir.isEmpty())
+        {
+            args << QStringLiteral("--qmldir") << trimmedDir;
+        }
     }
     if(ui->chkSlimPlugin->isChecked())
     {

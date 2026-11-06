@@ -94,7 +94,14 @@
        <item row="3" column="1">
         <layout class="QHBoxLayout" name="horizontalLayout_4">
          <item>
-          <widget class="QLineEdit" name="edtQmlDir"/>
+          <widget class="QLineEdit" name="edtQmlDir">
+           <property name="placeholderText">
+            <string>多个目录用英文分号分隔，如 D:/src/qml;D:/src/views</string>
+           </property>
+           <property name="toolTip">
+            <string>可填多个 QML 源码目录，每个目录会各传一次 --qmldir；点“选择”可逐个追加</string>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QPushButton" name="btnSelectQmlDir">
