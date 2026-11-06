@@ -7,6 +7,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
 #include <QTextStream>
 
 #include "ui_mainwindow.h"
@@ -257,7 +258,11 @@ void MainWindow::on_btnStartDeploy_clicked()
     QString outputDir = ui->edtOutputDir->text().trimmed();
 
     QString compilerType;
-    detectQtCompiler(qtBinDir, compilerType);
+    QString qtVersion;
+    detectQtCompiler(qtBinDir, compilerType, qtVersion);
+    // 记录本次打包的 Qt 版本/编译器，供 Enigma 单文件命名使用
+    currentQtVersion    = qtVersion;
+    currentCompilerType = compilerType;
 
     // 输出目录若与目标exe所在目录相同，源exe必须始终保留，防止清空旧目录时删掉原文件
     QFileInfo exeInfo(exePath);
@@ -344,7 +349,7 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
             QString enigmaConsolePath = ui->edtEnigmaVbPath->text().trimmed();
             // 以界面填写的目标EXE为准确定主程序与Single命名（目录内存在其它exe时不再取错）
             QString targetExe         = QDir(outputDir).filePath(QFileInfo(ui->edtExePath->text().trimmed()).fileName());
-            runEnigmaVbPack(outputDir, enigmaConsolePath, targetExe);
+            runEnigmaVbPack(outputDir, enigmaConsolePath, targetExe, currentQtVersion, currentCompilerType);
         }
     }
     else
@@ -411,9 +416,10 @@ void MainWindow::on_btnSaveLog_clicked()
     }
 }
 
-bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType)
+bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType, QString &qtVersion)
 {
     compilerType      = "Unknown";
+    qtVersion         = QString();
     QString qmakePath = QDir(qtBinDir).filePath("qmake.exe");
     if(!QFile::exists(qmakePath))
     {
@@ -433,6 +439,18 @@ bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType
     QString output = proc.readAllStandardOutput();
     appendLog("qmake -v 输出:\n" + output);
 
+    // 解析版本号：qmake -v 输出形如 "Using Qt version 6.8.3 in E:/Qt/6.8.3/mingw_64/lib"
+    const QRegularExpression versionRe(QStringLiteral("Using Qt version\\s+([0-9]+(?:\\.[0-9]+)*)"));
+    const QRegularExpressionMatch versionMatch = versionRe.match(output);
+    if(versionMatch.hasMatch())
+    {
+        qtVersion = versionMatch.captured(1);
+    }
+    else
+    {
+        appendLog("⚠️ 未能从 qmake -v 输出解析 Qt 版本号，单文件名将使用 unknown 占位");
+    }
+
     if(output.contains("MSVC", Qt::CaseInsensitive) || output.contains("Microsoft Visual Studio", Qt::CaseInsensitive))
     {
         compilerType = "MSVC";
@@ -441,7 +459,7 @@ bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType
     {
         compilerType = "MinGW";
     }
-    appendLog(QString("✅ 识别编译器类型：%1").arg(compilerType));
+    appendLog(QString("✅ 识别编译器类型：%1（Qt 版本：%2）").arg(compilerType, qtVersion.isEmpty() ? QStringLiteral("未知") : qtVersion));
     return true;
 }
 
@@ -531,12 +549,13 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
     }
 }
 
-bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe)
+bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe,
+                                 const QString &qtVersion, const QString &compilerType)
 {
     appendLog("\n===== Enigma Virtual Box Console 开始封包单文件 =====");
     QDir srcDir(sourceDir);
 
-    // 主程序必须以界面选择的目标EXE为准：Single文件名 = 目标EXE基名 + "_Single.exe"
+    // 主程序必须以界面选择的目标EXE为准：Single文件名 = 目标EXE基名 + "_Single" + 版本/编译器后缀
     // 目录里若存在其它exe（如旧版本exe、附带工具），枚举第一个exe会取错主程序与命名，故不能再用exeList.first()
     QString mainExe;
     QString exeBaseName;
@@ -559,8 +578,15 @@ bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
         exeBaseName = exeList.first().completeBaseName();
         appendLog(QString("⚠️ 未找到目标EXE，回退使用目录内第一个exe：%1").arg(mainExe));
     }
-    QString singleExePath = srcDir.filePath(exeBaseName + "_Single.exe");
-    QString evbPath       = srcDir.filePath("enigma_temp.evb");
+
+    // 单文件名追加 Qt 版本与编译器标识，同目录可区分不同 Qt 版本/编译器产物：
+    // 如 App_Single-qt6.8.3-mingw.exe、App_Single-qt5.15.2-msvc.exe；版本/编译器缺失时用 unknown 占位
+    const QString versionTag  = qtVersion.isEmpty() ? QStringLiteral("unknown") : qtVersion;
+    const QString compilerTag = compilerType.isEmpty() ? QStringLiteral("unknown") : compilerType.toLower();
+    const QString singleName  = QStringLiteral("%1_Single-qt%2-%3.exe").arg(exeBaseName, versionTag, compilerTag);
+    QString       singleExePath = srcDir.filePath(singleName);
+    QString       evbPath       = srcDir.filePath("enigma_temp.evb");
+    appendLog(QString("ℹ️ 单文件命名：%1（Qt %2 / %3）").arg(singleName, versionTag, compilerTag));
 
     QFile::remove(evbPath);
     QFile evbFile(evbPath);
@@ -667,11 +693,14 @@ void MainWindow::appendEvbFolder(QTextStream &stream, const QDir &dir, const QSt
     stream << pad << "  <Name>" << escapeXml(virtualName) << "</Name>\n";
     stream << pad << "  <Files>\n";
 
-    // 当前目录下的普通文件（跳过临时evb工程文件自身）
+    // 当前目录下的普通文件（跳过临时evb工程文件与已生成的单文件自身）
     const QFileInfoList fileList = dir.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
     for(const QFileInfo &fileInfo : fileList)
     {
-        if(fileInfo.fileName() == "enigma_temp.evb" || fileInfo.fileName().endsWith("_Single.exe"))
+        // 兼容新旧单文件命名：旧 xxx_Single.exe、新 xxx_Single-qt<版本>-<编译器>.exe，均不重复打入
+        const QString fileName = fileInfo.fileName();
+        if(fileName == QStringLiteral("enigma_temp.evb") ||
+           (fileName.contains(QStringLiteral("_Single")) && fileName.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)))
         {
             continue;
         }

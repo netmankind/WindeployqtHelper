@@ -25,8 +25,9 @@ public:
     ~MainWindow() override;
 
     void appendLog(const QString &msg);
-    bool runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe);
-    bool detectQtCompiler(const QString &qtBinDir, QString &compilerType);
+    bool runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe,
+                         const QString &qtVersion, const QString &compilerType);
+    bool detectQtCompiler(const QString &qtBinDir, QString &compilerType, QString &qtVersion);
 
 private slots:
     void on_btnSelectExe_clicked();
@@ -50,6 +51,9 @@ private:
     Ui::MainWindow *ui;
     QProcess       *deployProcess;
     QString         deployOutputBuffer; // 累积windeployqt输出，用于失败原因分析
+    // 本次打包的 Qt 版本与编译器类型，供 Enigma 单文件命名（如 _Single-qt6.8.3-mingw.exe）使用
+    QString currentQtVersion;
+    QString currentCompilerType;
 
     bool loadSettings();
     bool saveSettings();

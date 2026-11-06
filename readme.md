@@ -16,8 +16,8 @@ Qt 应用一键部署打包助手（GUI 工具）：图形化封装 `windeployqt
 - **windeployqt 参数支持**：`--multimedia`、`--qmldir`、`--no-plugins`（精简插件）。
 - **Enigma 单文件打包**：
   - 自动生成 EVB 11.30 所需的 **XML** 工程文件（`.evb`），递归打包输出目录全部文件；
-  - 单文件命名：`<目标EXE基名>_Single.exe`，**输出到输出目录内**；
-  - 打包时自动跳过已存在的 `*_Single.exe`，防止旧单文件被重复打入；
+  - 单文件命名：`<目标EXE基名>_Single-qt<版本>-<编译器>.exe`（如 `App_Single-qt6.8.3-mingw.exe`、`App_Single-qt5.15.2-msvc.exe`），版本与编译器取自 `qmake -v` 识别结果，**输出到输出目录内**；
+  - 打包时自动跳过已存在的单文件（`*_Single*.exe`），防止旧单文件被重复打入；
   - 自动跳过运行时数据目录 `data`（历史记录 db / 导出文件等由程序动态增删的文件），避免 Enigma 报 `File does not exist`；运行时数据打进单文件本就无益（程序写入不回写 Single）。
 - **配置持久化**：`config.ini` 保存/加载全部配置。
 - **日志面板**：输出 windeployqt / Enigma 完整过程，可保存为 txt。
@@ -65,7 +65,7 @@ DESTDIR = $$PWD/../WindeployqtHelper-qt<完整版本号>-<编译器>-bin
 6. 点击 **开始打包**，流程：
    - 复制主程序到输出目录（同目录时自动跳过）→ 执行 windeployqt → （可选）Enigma 封包单文件。
 
-打包完成后，输出目录内会生成 `<目标EXE基名>_Single.exe` 单文件便携版。
+打包完成后，输出目录内会生成 `<目标EXE基名>_Single-qt<版本>-<编译器>.exe` 单文件便携版（例如 `WindeployqtHelper_Single-qt6.8.3-mingw.exe`），同一目录下不同 Qt 版本/编译器的产物可按文件名区分。
 
 ## 配置说明（config.ini）
 
