@@ -51,14 +51,14 @@ DEFINES *= QT_USE_QSTRINGBUILDER      # QString 的 a+b 走 QStringBuilder 优�
 CONFIG(strict_qt) {
     DEFINES *= QT_STRICT_ITERATORS    # 迭代器 const/可变混用报错，帮助抓隐患
 }
-# 需要代码纪律更强的可自行打开（会大量拒绝隐式转换/关键字冲突，老代码需清理）：
+# 代码纪律：隐式转换与 Qt 关键字写法默认封死（存量老工程需先清理代码才能编译通过）：
 # QT_NO_KEYWORDS要转换signals->Q_SIGNALS,slots->Q_SLOTS,emit->Q_EMIT,foreach / forever-> C++11 range-for / Q_FOREACH
-#DEFINES *= QT_NO_KEYWORDS
+DEFINES *= QT_NO_KEYWORDS
 # QT_NO_CAST_FROM_ASCII，无法用char* → QString 的隐式转换，
 # 如QString s = "abc";、func("abc")（形参 QString）->QStringLiteral("abc") / tr("abc") / QString::fromUtf8("abc"),
 # qs == "abc"、ba == qs 等全部比较重载->qs == QLatin1String("abc") 或 QStringLiteral
 # QT_NO_CAST_TO_ASCII —— 反方向：堵 QString → QByteArray
-#DEFINES *= QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII
+DEFINES *= QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII
 # 如果全量切换错误面太大，QT_RESTRICTED_CAST_FROM_ASCII 是折衷——只保留 QString(const char(&)[N])（按 fromUtf8 处理的字符串字面量），
 # 删掉 char* 变量和 QByteArray 通道（L85-86）；注意它和 QT_NO_CAST_FROM_ASCII 互斥，同时定义直接 #error（L5）。
 #DEFINES *= QT_RESTRICTED_CAST_FROM_ASCII

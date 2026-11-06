@@ -29,7 +29,8 @@ public:
                          const QString &qtVersion, const QString &compilerType);
     bool detectQtCompiler(const QString &qtBinDir, QString &compilerType, QString &qtVersion);
 
-private slots:
+// QT_NO_KEYWORDS 已启用，关键字写法（slots/signals/emit）被禁用，必须用带 Q_ 前缀的宏
+private Q_SLOTS:
     void on_btnSelectExe_clicked();
     void on_btnSelectQtBin_clicked();
     void on_btnOpenOutput_clicked();

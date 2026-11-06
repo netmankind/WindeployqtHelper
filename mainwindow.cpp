@@ -38,32 +38,32 @@ MainWindow::~MainWindow()
 
 void MainWindow::appendLog(const QString &msg)
 {
-    QString timeStamp = QDateTime::currentDateTime().toString("[yyyy-MM-dd HH:mm:ss] ");
+    QString timeStamp = QDateTime::currentDateTime().toString(QStringLiteral("[yyyy-MM-dd HH:mm:ss] "));
     ui->txtLog->appendPlainText(timeStamp + msg);
 }
 
 bool MainWindow::loadSettings()
 {
-    QSettings settings(QCoreApplication::applicationDirPath() + "/config.ini", QSettings::IniFormat);
-    settings.beginGroup("Paths");
-    ui->edtExePath->setText(settings.value("exePath", "").toString());
-    ui->edtQtBin->setText(settings.value("qtBin", "").toString());
-    ui->edtOutputDir->setText(settings.value("outputDir", "").toString());
-    ui->edtQmlDir->setText(settings.value("qmlDir", "").toString());
-    ui->edtEnigmaVbPath->setText(settings.value("enigmaVbConsole", "").toString());
+    QSettings settings(QCoreApplication::applicationDirPath() + QStringLiteral("/config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("Paths"));
+    ui->edtExePath->setText(settings.value(QStringLiteral("exePath"), QStringLiteral("")).toString());
+    ui->edtQtBin->setText(settings.value(QStringLiteral("qtBin"), QStringLiteral("")).toString());
+    ui->edtOutputDir->setText(settings.value(QStringLiteral("outputDir"), QStringLiteral("")).toString());
+    ui->edtQmlDir->setText(settings.value(QStringLiteral("qmlDir"), QStringLiteral("")).toString());
+    ui->edtEnigmaVbPath->setText(settings.value(QStringLiteral("enigmaVbConsole"), QStringLiteral("")).toString());
     settings.endGroup();
 
-    settings.beginGroup("Options");
-    ui->chkCleanOld->setChecked(settings.value("chkCleanOld", false).toBool());
-    ui->chkMultimedia->setChecked(settings.value("chkMultimedia", false).toBool());
-    ui->chkZip->setChecked(settings.value("chkZip", false).toBool());
-    ui->chkSlimPlugin->setChecked(settings.value("chkSlimPlugin", false).toBool());
-    ui->edtCustomKeepPlugins->setText(settings.value("customKeepPlugins", "").toString());
-    ui->chkCopyVcRuntime->setChecked(settings.value("chkCopyVcRuntime", false).toBool());
-    ui->edtVersion->setText(settings.value("version", "1.0.0").toString());
-    ui->edtExtraDlls->setText(settings.value("extraDlls", "").toString());
-    ui->chkEnigmaPack->setChecked(settings.value("chkEnigmaPack", false).toBool());
-    ui->edtKeepFiles->setText(settings.value("keepFiles", "config.ini").toString());
+    settings.beginGroup(QStringLiteral("Options"));
+    ui->chkCleanOld->setChecked(settings.value(QStringLiteral("chkCleanOld"), false).toBool());
+    ui->chkMultimedia->setChecked(settings.value(QStringLiteral("chkMultimedia"), false).toBool());
+    ui->chkZip->setChecked(settings.value(QStringLiteral("chkZip"), false).toBool());
+    ui->chkSlimPlugin->setChecked(settings.value(QStringLiteral("chkSlimPlugin"), false).toBool());
+    ui->edtCustomKeepPlugins->setText(settings.value(QStringLiteral("customKeepPlugins"), QStringLiteral("")).toString());
+    ui->chkCopyVcRuntime->setChecked(settings.value(QStringLiteral("chkCopyVcRuntime"), false).toBool());
+    ui->edtVersion->setText(settings.value(QStringLiteral("version"), QStringLiteral("1.0.0")).toString());
+    ui->edtExtraDlls->setText(settings.value(QStringLiteral("extraDlls"), QStringLiteral("")).toString());
+    ui->chkEnigmaPack->setChecked(settings.value(QStringLiteral("chkEnigmaPack"), false).toBool());
+    ui->edtKeepFiles->setText(settings.value(QStringLiteral("keepFiles"), QStringLiteral("config.ini")).toString());
 
     settings.endGroup();
     return true;
@@ -71,26 +71,26 @@ bool MainWindow::loadSettings()
 
 bool MainWindow::saveSettings()
 {
-    QSettings settings(QCoreApplication::applicationDirPath() + "/config.ini", QSettings::IniFormat);
-    settings.beginGroup("Paths");
-    settings.setValue("exePath", ui->edtExePath->text());
-    settings.setValue("qtBin", ui->edtQtBin->text());
-    settings.setValue("outputDir", ui->edtOutputDir->text());
-    settings.setValue("qmlDir", ui->edtQmlDir->text());
-    settings.setValue("enigmaVbConsole", ui->edtEnigmaVbPath->text());
+    QSettings settings(QCoreApplication::applicationDirPath() + QStringLiteral("/config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("Paths"));
+    settings.setValue(QStringLiteral("exePath"), ui->edtExePath->text());
+    settings.setValue(QStringLiteral("qtBin"), ui->edtQtBin->text());
+    settings.setValue(QStringLiteral("outputDir"), ui->edtOutputDir->text());
+    settings.setValue(QStringLiteral("qmlDir"), ui->edtQmlDir->text());
+    settings.setValue(QStringLiteral("enigmaVbConsole"), ui->edtEnigmaVbPath->text());
     settings.endGroup();
 
-    settings.beginGroup("Options");
-    settings.setValue("chkCleanOld", ui->chkCleanOld->isChecked());
-    settings.setValue("chkMultimedia", ui->chkMultimedia->isChecked());
-    settings.setValue("chkZip", ui->chkZip->isChecked());
-    settings.setValue("chkSlimPlugin", ui->chkSlimPlugin->isChecked());
-    settings.setValue("customKeepPlugins", ui->edtCustomKeepPlugins->text());
-    settings.setValue("chkCopyVcRuntime", ui->chkCopyVcRuntime->isChecked());
-    settings.setValue("version", ui->edtVersion->text());
-    settings.setValue("extraDlls", ui->edtExtraDlls->text());
-    settings.setValue("chkEnigmaPack", ui->chkEnigmaPack->isChecked());
-    settings.setValue("keepFiles", ui->edtKeepFiles->text());
+    settings.beginGroup(QStringLiteral("Options"));
+    settings.setValue(QStringLiteral("chkCleanOld"), ui->chkCleanOld->isChecked());
+    settings.setValue(QStringLiteral("chkMultimedia"), ui->chkMultimedia->isChecked());
+    settings.setValue(QStringLiteral("chkZip"), ui->chkZip->isChecked());
+    settings.setValue(QStringLiteral("chkSlimPlugin"), ui->chkSlimPlugin->isChecked());
+    settings.setValue(QStringLiteral("customKeepPlugins"), ui->edtCustomKeepPlugins->text());
+    settings.setValue(QStringLiteral("chkCopyVcRuntime"), ui->chkCopyVcRuntime->isChecked());
+    settings.setValue(QStringLiteral("version"), ui->edtVersion->text());
+    settings.setValue(QStringLiteral("extraDlls"), ui->edtExtraDlls->text());
+    settings.setValue(QStringLiteral("chkEnigmaPack"), ui->chkEnigmaPack->isChecked());
+    settings.setValue(QStringLiteral("keepFiles"), ui->edtKeepFiles->text());
 
     settings.endGroup();
     return true;
@@ -100,17 +100,17 @@ bool MainWindow::checkDeployInput()
 {
     if(ui->edtExePath->text().trimmed().isEmpty() || !QFile::exists(ui->edtExePath->text()))
     {
-        QMessageBox::warning(this, "校验失败", "目标EXE不存在！");
+        QMessageBox::warning(this, QStringLiteral("校验失败"), QStringLiteral("目标EXE不存在！"));
         return false;
     }
     if(ui->edtQtBin->text().trimmed().isEmpty() || !QDir(ui->edtQtBin->text()).exists())
     {
-        QMessageBox::warning(this, "校验失败", "Qt bin目录不存在！");
+        QMessageBox::warning(this, QStringLiteral("校验失败"), QStringLiteral("Qt bin目录不存在！"));
         return false;
     }
     if(ui->edtOutputDir->text().trimmed().isEmpty())
     {
-        QMessageBox::warning(this, "校验失败", "输出目录不能为空！");
+        QMessageBox::warning(this, QStringLiteral("校验失败"), QStringLiteral("输出目录不能为空！"));
         return false;
     }
     if(ui->chkEnigmaPack->isChecked())
@@ -118,7 +118,7 @@ bool MainWindow::checkDeployInput()
         QString enigmaPath = ui->edtEnigmaVbPath->text().trimmed();
         if(enigmaPath.isEmpty() || !QFile::exists(enigmaPath))
         {
-            QMessageBox::warning(this, "校验失败", "已勾选Enigma打包，请选择有效的 enigmavbconsole.exe！");
+            QMessageBox::warning(this, QStringLiteral("校验失败"), QStringLiteral("已勾选Enigma打包，请选择有效的 enigmavbconsole.exe！"));
             return false;
         }
     }
@@ -155,7 +155,7 @@ bool MainWindow::clearDirectoryKeepSelf(const QDir &dir, const QStringList &keep
 
         if(needKeep)
         {
-            appendLog(QString("ℹ️ 跳过保留文件：%1（匹配规则）").arg(info.fileName()));
+            appendLog(QStringLiteral("ℹ️ 跳过保留文件：%1（匹配规则）").arg(info.fileName()));
             continue;
         }
 
@@ -164,14 +164,14 @@ bool MainWindow::clearDirectoryKeepSelf(const QDir &dir, const QStringList &keep
             QDir subDir(info.absoluteFilePath());
             if(!subDir.removeRecursively())
             {
-                appendLog(QString("⚠️ 删除子目录失败：%1").arg(info.absoluteFilePath()));
+                appendLog(QStringLiteral("⚠️ 删除子目录失败：%1").arg(info.absoluteFilePath()));
             }
         }
         else
         {
             if(!QFile::remove(info.absoluteFilePath()))
             {
-                appendLog(QString("⚠️ 删除文件失败：%1").arg(info.absoluteFilePath()));
+                appendLog(QStringLiteral("⚠️ 删除文件失败：%1").arg(info.absoluteFilePath()));
             }
         }
     }
@@ -198,7 +198,7 @@ QString MainWindow::dialogStartDir(const QString &currentPath, bool currentIsDir
 
 void MainWindow::on_btnSelectExe_clicked()
 {
-    QString filePath = QFileDialog::getOpenFileName(this, "选择目标EXE", dialogStartDir(ui->edtExePath->text(), false), "Executable(*.exe)");
+    QString filePath = QFileDialog::getOpenFileName(this, QStringLiteral("选择目标EXE"), dialogStartDir(ui->edtExePath->text(), false), QStringLiteral("Executable(*.exe)"));
     if(!filePath.isEmpty())
     {
         ui->edtExePath->setText(filePath);
@@ -207,7 +207,7 @@ void MainWindow::on_btnSelectExe_clicked()
 
 void MainWindow::on_btnSelectQtBin_clicked()
 {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择Qt bin目录", dialogStartDir(ui->edtQtBin->text(), true));
+    QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择Qt bin目录"), dialogStartDir(ui->edtQtBin->text(), true));
     if(!dir.isEmpty())
     {
         ui->edtQtBin->setText(dir);
@@ -223,13 +223,13 @@ void MainWindow::on_btnOpenOutput_clicked()
     }
     else
     {
-        appendLog("⚠️ 输出目录不存在");
+        appendLog(QStringLiteral("⚠️ 输出目录不存在"));
     }
 }
 
 void MainWindow::on_btnSelectQmlDir_clicked()
 {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择QML源码目录", dialogStartDir(ui->edtQmlDir->text(), true));
+    QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择QML源码目录"), dialogStartDir(ui->edtQmlDir->text(), true));
     if(!dir.isEmpty())
     {
         ui->edtQmlDir->setText(dir);
@@ -238,7 +238,7 @@ void MainWindow::on_btnSelectQmlDir_clicked()
 
 void MainWindow::on_btnSelectEnigmaVb_clicked()
 {
-    QString filePath = QFileDialog::getOpenFileName(this, "选择 enigmavbconsole.exe", dialogStartDir(ui->edtEnigmaVbPath->text(), false), "Enigma Console(enigmavbconsole.exe)");
+    QString filePath = QFileDialog::getOpenFileName(this, QStringLiteral("选择 enigmavbconsole.exe"), dialogStartDir(ui->edtEnigmaVbPath->text(), false), QStringLiteral("Enigma Console(enigmavbconsole.exe)"));
     if(!filePath.isEmpty())
     {
         ui->edtEnigmaVbPath->setText(filePath);
@@ -249,7 +249,7 @@ void MainWindow::on_btnStartDeploy_clicked()
 {
     if(deployProcess->state() != QProcess::NotRunning)
     {
-        QMessageBox::information(this, "提示", "打包进程正在运行！");
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("打包进程正在运行！"));
         return;
     }
     if(!checkDeployInput())
@@ -257,7 +257,7 @@ void MainWindow::on_btnStartDeploy_clicked()
         return;
     }
 
-    appendLog("===== 开始准备打包 =====");
+    appendLog(QStringLiteral("===== 开始准备打包 ====="));
     deployOutputBuffer.clear();
     QString exePath   = ui->edtExePath->text().trimmed();
     QString qtBinDir  = ui->edtQtBin->text().trimmed();
@@ -275,48 +275,48 @@ void MainWindow::on_btnStartDeploy_clicked()
     QDir outDir(outputDir);
     if(ui->chkCleanOld->isChecked())
     {
-        appendLog("⚠️ 清空旧输出目录（保留目录本身，跳过配置的保留文件）");
+        appendLog(QStringLiteral("⚠️ 清空旧输出目录（保留目录本身，跳过配置的保留文件）"));
         QString     rawKeep  = ui->edtKeepFiles->text().trimmed();
-        QStringList keepList = rawKeep.split(",", Qt::SkipEmptyParts);
+        QStringList keepList = rawKeep.split(QStringLiteral(","), Qt::SkipEmptyParts);
         keepList << exeInfo.fileName();
         clearDirectoryKeepSelf(outDir, keepList);
     }
-    outDir.mkpath(".");
+    outDir.mkpath(QStringLiteral("."));
 
     // 拷贝exe到输出目录：目标与源为同一文件（输出目录=源exe目录）时跳过删除与复制，避免删掉原exe
     QString destExe = outDir.filePath(exeInfo.fileName());
     if(exeInfo.canonicalFilePath() == QFileInfo(destExe).canonicalFilePath())
     {
-        appendLog(QString("ℹ️ 输出目录与源exe目录相同，主程序已就位，无需复制：%1").arg(destExe));
+        appendLog(QStringLiteral("ℹ️ 输出目录与源exe目录相同，主程序已就位，无需复制：%1").arg(destExe));
     }
     else
     {
         QFile::remove(destExe);
         if(!QFile::copy(exePath, destExe))
         {
-            appendLog(QString("❌ 复制主程序到输出目录失败：%1").arg(destExe));
+            appendLog(QStringLiteral("❌ 复制主程序到输出目录失败：%1").arg(destExe));
             return;
         }
-        appendLog(QString("✅ 复制主程序到输出目录：%1").arg(destExe));
+        appendLog(QStringLiteral("✅ 复制主程序到输出目录：%1").arg(destExe));
     }
 
-    QString     windeployqt = QDir(qtBinDir).filePath("windeployqt.exe");
+    QString     windeployqt = QDir(qtBinDir).filePath(QStringLiteral("windeployqt.exe"));
     QStringList args;
     args << destExe;
     if(ui->chkMultimedia->isChecked())
     {
-        args << "--multimedia";
+        args << QStringLiteral("--multimedia");
     }
     if(!ui->edtQmlDir->text().trimmed().isEmpty())
     {
-        args << "--qmldir" << ui->edtQmlDir->text().trimmed();
+        args << QStringLiteral("--qmldir") << ui->edtQmlDir->text().trimmed();
     }
     if(ui->chkSlimPlugin->isChecked())
     {
-        args << "--no-plugins";
+        args << QStringLiteral("--no-plugins");
     }
 
-    appendLog(QString("执行 windeployqt: %1 %2").arg(windeployqt, args.join(" ")));
+    appendLog(QStringLiteral("执行 windeployqt: %1 %2").arg(windeployqt, args.join(QStringLiteral(" "))));
     deployProcess->setProgram(windeployqt);
     deployProcess->setArguments(args);
     deployProcess->setWorkingDirectory(qtBinDir);
@@ -326,9 +326,9 @@ void MainWindow::on_btnStartDeploy_clicked()
     if(!mingwRuntimeDir.isEmpty())
     {
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        env.insert("PATH", mingwRuntimeDir + QDir::listSeparator() + env.value("PATH"));
+        env.insert(QStringLiteral("PATH"), mingwRuntimeDir + QDir::listSeparator() + env.value(QStringLiteral("PATH")));
         deployProcess->setProcessEnvironment(env);
-        appendLog(QString("ℹ️ 已前置 MinGW 运行库目录到 PATH：%1").arg(mingwRuntimeDir));
+        appendLog(QStringLiteral("ℹ️ 已前置 MinGW 运行库目录到 PATH：%1").arg(mingwRuntimeDir));
     }
     deployProcess->start();
 }
@@ -338,7 +338,7 @@ void MainWindow::on_btnStopDeploy_clicked()
     if(deployProcess->state() != QProcess::NotRunning)
     {
         deployProcess->kill();
-        appendLog("⚠️ 打包进程已终止");
+        appendLog(QStringLiteral("⚠️ 打包进程已终止"));
     }
 }
 
@@ -346,7 +346,7 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
 {
     if(status == QProcess::NormalExit && exitCode == 0)
     {
-        appendLog("✅ windeployqt执行完成");
+        appendLog(QStringLiteral("✅ windeployqt执行完成"));
         QString outputDir = ui->edtOutputDir->text().trimmed();
         // windeployqt 完成后校正 MinGW 运行库 DLL 来源，防止输出目录混入从其它 MinGW 目录复制来的版本
         fixMinGwRuntimeDlls(outputDir, findMinGwRuntimeDir(ui->edtQtBin->text().trimmed()));
@@ -360,26 +360,26 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
     }
     else
     {
-        appendLog(QString("❌ windeployqt失败 exitCode=%1").arg(exitCode));
+        appendLog(QStringLiteral("❌ windeployqt失败 exitCode=%1").arg(exitCode));
         // 常见失败原因提示：目标exe与所选Qt Bin版本/编译器不匹配
-        if(deployOutputBuffer.contains("does not seem to be a Qt executable", Qt::CaseInsensitive))
+        if(deployOutputBuffer.contains(QStringLiteral("does not seem to be a Qt executable"), Qt::CaseInsensitive))
         {
-            appendLog("⚠️ 提示：目标exe与所选“Qt Bin目录”版本/编译器不匹配（例如用Qt6的windeployqt部署Qt5程序，或MinGW版windeployqt部署MSVC程序）。");
-            appendLog("   请将Qt Bin目录切换为目标exe实际使用的Qt版本与编译器对应的bin目录（含windeployqt.exe），并重新打包。");
+            appendLog(QStringLiteral("⚠️ 提示：目标exe与所选“Qt Bin目录”版本/编译器不匹配（例如用Qt6的windeployqt部署Qt5程序，或MinGW版windeployqt部署MSVC程序）。"));
+            appendLog(QStringLiteral("   请将Qt Bin目录切换为目标exe实际使用的Qt版本与编译器对应的bin目录（含windeployqt.exe），并重新打包。"));
         }
     }
 }
 
 void MainWindow::onDeployReadyReadStdout()
 {
-    QString out = deployProcess->readAllStandardOutput();
+    QString out = QString::fromUtf8(deployProcess->readAllStandardOutput());
     deployOutputBuffer.append(out);
     appendLog(out);
 }
 
 void MainWindow::onDeployReadyReadStderr()
 {
-    QString err = deployProcess->readAllStandardError();
+    QString err = QString::fromUtf8(deployProcess->readAllStandardError());
     deployOutputBuffer.append(err);
     appendLog(err);
 }
@@ -387,13 +387,13 @@ void MainWindow::onDeployReadyReadStderr()
 void MainWindow::on_btnSaveConfig_clicked()
 {
     saveSettings();
-    appendLog("✅ 配置已保存到 config.ini");
+    appendLog(QStringLiteral("✅ 配置已保存到 config.ini"));
 }
 
 void MainWindow::on_btnLoadConfig_clicked()
 {
     loadSettings();
-    appendLog("✅ 已加载 config.ini");
+    appendLog(QStringLiteral("✅ 已加载 config.ini"));
 }
 
 void MainWindow::on_btnClearLog_clicked()
@@ -403,7 +403,7 @@ void MainWindow::on_btnClearLog_clicked()
 
 void MainWindow::on_btnSaveLog_clicked()
 {
-    QString filePath = QFileDialog::getSaveFileName(this, "保存日志", "deploy_log.txt", "Text(*.txt)");
+    QString filePath = QFileDialog::getSaveFileName(this, QStringLiteral("保存日志"), QStringLiteral("deploy_log.txt"), QStringLiteral("Text(*.txt)"));
     if(filePath.isEmpty())
     {
         return;
@@ -414,36 +414,36 @@ void MainWindow::on_btnSaveLog_clicked()
         QTextStream ts(&f);
         ts << ui->txtLog->toPlainText();
         f.close();
-        appendLog(QString("✅ 日志保存至 %1").arg(filePath));
+        appendLog(QStringLiteral("✅ 日志保存至 %1").arg(filePath));
     }
     else
     {
-        appendLog("❌ 日志保存失败");
+        appendLog(QStringLiteral("❌ 日志保存失败"));
     }
 }
 
 bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType, QString &qtVersion)
 {
-    compilerType      = "Unknown";
+    compilerType      = QStringLiteral("Unknown");
     qtVersion         = QString();
-    QString qmakePath = QDir(qtBinDir).filePath("qmake.exe");
+    QString qmakePath = QDir(qtBinDir).filePath(QStringLiteral("qmake.exe"));
     if(!QFile::exists(qmakePath))
     {
-        appendLog("⚠️ qmake.exe不存在，无法识别编译器");
+        appendLog(QStringLiteral("⚠️ qmake.exe不存在，无法识别编译器"));
         return false;
     }
     QProcess proc;
     proc.setProgram(qmakePath);
-    proc.setArguments({"-v"});
+    proc.setArguments({QStringLiteral("-v")});
     proc.start();
     if(!proc.waitForFinished(3000))
     {
-        appendLog("⚠️ qmake -v 执行超时");
+        appendLog(QStringLiteral("⚠️ qmake -v 执行超时"));
         proc.kill();
         return false;
     }
-    QString output = proc.readAllStandardOutput();
-    appendLog("qmake -v 输出:\n" + output);
+    QString output = QString::fromUtf8(proc.readAllStandardOutput());
+    appendLog(QStringLiteral("qmake -v 输出:\n") + output);
 
     // 解析版本号：qmake -v 输出形如 "Using Qt version 6.8.3 in E:/Qt/6.8.3/mingw_64/lib"
     const QRegularExpression versionRe(QStringLiteral("Using Qt version\\s+([0-9]+(?:\\.[0-9]+)*)"));
@@ -454,18 +454,18 @@ bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType
     }
     else
     {
-        appendLog("⚠️ 未能从 qmake -v 输出解析 Qt 版本号，单文件名将使用 unknown 占位");
+        appendLog(QStringLiteral("⚠️ 未能从 qmake -v 输出解析 Qt 版本号，单文件名将使用 unknown 占位"));
     }
 
-    if(output.contains("MSVC", Qt::CaseInsensitive) || output.contains("Microsoft Visual Studio", Qt::CaseInsensitive))
+    if(output.contains(QStringLiteral("MSVC"), Qt::CaseInsensitive) || output.contains(QStringLiteral("Microsoft Visual Studio"), Qt::CaseInsensitive))
     {
-        compilerType = "MSVC";
+        compilerType = QStringLiteral("MSVC");
     }
-    else if(output.contains("MinGW", Qt::CaseInsensitive) || output.contains("g++", Qt::CaseInsensitive))
+    else if(output.contains(QStringLiteral("MinGW"), Qt::CaseInsensitive) || output.contains(QStringLiteral("g++"), Qt::CaseInsensitive))
     {
-        compilerType = "MinGW";
+        compilerType = QStringLiteral("MinGW");
     }
-    appendLog(QString("✅ 识别编译器类型：%1（Qt 版本：%2）").arg(compilerType, qtVersion.isEmpty() ? QStringLiteral("未知") : qtVersion));
+    appendLog(QStringLiteral("✅ 识别编译器类型：%1（Qt 版本：%2）").arg(compilerType, qtVersion.isEmpty() ? QStringLiteral("未知") : qtVersion));
     return true;
 }
 
@@ -474,7 +474,7 @@ QString MainWindow::findMinGwRuntimeDir(const QString &qtBinDir) const
 {
     // 1) Qt5 的 mingw kit（如 E:/Qt/5.15.2/mingw81_64/bin）自身就带运行库 DLL
     QDir qtBin(qtBinDir);
-    if(QFile::exists(qtBin.filePath("libstdc++-6.dll")))
+    if(QFile::exists(qtBin.filePath(QStringLiteral("libstdc++-6.dll"))))
     {
         return qtBin.absolutePath();
     }
@@ -484,15 +484,15 @@ QString MainWindow::findMinGwRuntimeDir(const QString &qtBinDir) const
     qtRoot.cdUp();   // <Qt根>/<版本>/<kit>
     qtRoot.cdUp();   // <Qt根>/<版本>
     qtRoot.cdUp();   // <Qt根>
-    const QDir toolsDir(qtRoot.filePath("Tools"));
+    const QDir toolsDir(qtRoot.filePath(QStringLiteral("Tools")));
     QStringList candidates;
     if(toolsDir.exists())
     {
-        const QStringList mingwDirs = toolsDir.entryList(QStringList() << "mingw*", QDir::Dirs | QDir::NoDotAndDotDot);
+        const QStringList mingwDirs = toolsDir.entryList(QStringList() << QStringLiteral("mingw*"), QDir::Dirs | QDir::NoDotAndDotDot);
         for(const QString &dirName: mingwDirs)
         {
-            QDir binDir(toolsDir.filePath(dirName + "/bin"));
-            if(QFile::exists(binDir.filePath("g++.exe")) && QFile::exists(binDir.filePath("libstdc++-6.dll")))
+            QDir binDir(toolsDir.filePath(dirName + QStringLiteral("/bin")));
+            if(QFile::exists(binDir.filePath(QStringLiteral("g++.exe"))) && QFile::exists(binDir.filePath(QStringLiteral("libstdc++-6.dll"))))
             {
                 candidates << binDir.absolutePath();
             }
@@ -512,22 +512,22 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
 {
     if(runtimeDir.isEmpty())
     {
-        appendLog("⚠️ 未定位到 MinGW 运行库目录，跳过运行库校正");
+        appendLog(QStringLiteral("⚠️ 未定位到 MinGW 运行库目录，跳过运行库校正"));
         return;
     }
     const QStringList runtimeDlls = QStringList()
-        << "libstdc++-6.dll"
-        << "libgcc_s_seh-1.dll"
-        << "libgcc_s_dw2-1.dll"
-        << "libwinpthread-1.dll";
+        << QStringLiteral("libstdc++-6.dll")
+        << QStringLiteral("libgcc_s_seh-1.dll")
+        << QStringLiteral("libgcc_s_dw2-1.dll")
+        << QStringLiteral("libwinpthread-1.dll");
     for(const QString &dllName: runtimeDlls)
     {
-        QFileInfo src(runtimeDir + "/" + dllName);
+        QFileInfo src(runtimeDir + QStringLiteral("/") + dllName);
         if(!src.exists())
         {
             continue;   // 工具链无此 DLL（如 32 位无 seh）则跳过
         }
-        QFileInfo dst(outputDir + "/" + dllName);
+        QFileInfo dst(outputDir + QStringLiteral("/") + dllName);
         if(!dst.exists())
         {
             continue;   // 输出目录没有该 DLL（如 MSVC 部署）则不动
@@ -535,22 +535,22 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
         QString srcPath = QDir::toNativeSeparators(src.absoluteFilePath());
         QString dstPath = QDir::toNativeSeparators(dst.absoluteFilePath());
         // 先复制临时文件再替换，避免复制失败时破坏原文件
-        if(QFile::copy(src.absoluteFilePath(), dst.absoluteFilePath() + ".tmp"))
+        if(QFile::copy(src.absoluteFilePath(), dst.absoluteFilePath() + QStringLiteral(".tmp")))
         {
             QFile::remove(dst.absoluteFilePath());
-            if(QFile::rename(dst.absoluteFilePath() + ".tmp", dst.absoluteFilePath()))
+            if(QFile::rename(dst.absoluteFilePath() + QStringLiteral(".tmp"), dst.absoluteFilePath()))
             {
-                appendLog(QString("✅ 运行库校正：%1 ← %2（%3 字节）").arg(dstPath, srcPath).arg(src.size()));
+                appendLog(QStringLiteral("✅ 运行库校正：%1 ← %2（%3 字节）").arg(dstPath, srcPath).arg(src.size()));
             }
             else
             {
-                QFile::remove(dst.absoluteFilePath() + ".tmp");
-                appendLog(QString("⚠️ 运行库校正失败：无法替换 %1").arg(dstPath));
+                QFile::remove(dst.absoluteFilePath() + QStringLiteral(".tmp"));
+                appendLog(QStringLiteral("⚠️ 运行库校正失败：无法替换 %1").arg(dstPath));
             }
         }
         else
         {
-            appendLog(QString("⚠️ 运行库校正失败：无法复制 %1").arg(srcPath));
+            appendLog(QStringLiteral("⚠️ 运行库校正失败：无法复制 %1").arg(srcPath));
         }
     }
 }
@@ -558,7 +558,7 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
 bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe,
                                  const QString &qtVersion, const QString &compilerType)
 {
-    appendLog("\n===== Enigma Virtual Box Console 开始封包单文件 =====");
+    appendLog(QStringLiteral("\n===== Enigma Virtual Box Console 开始封包单文件 ====="));
     QDir srcDir(sourceDir);
 
     // 主程序必须以界面选择的目标EXE为准：Single文件名 = 目标EXE基名 + "_Single" + 版本/编译器后缀
@@ -569,20 +569,20 @@ bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
     {
         mainExe     = targetExe;
         exeBaseName = QFileInfo(mainExe).completeBaseName();
-        appendLog(QString("✅ 主程序(目标EXE)：%1").arg(mainExe));
+        appendLog(QStringLiteral("✅ 主程序(目标EXE)：%1").arg(mainExe));
     }
     else
     {
         // 兼容旧行为：未传入目标exe时回退取目录内第一个exe（含多个exe时可能取错，仅作兜底）
-        QFileInfoList exeList = srcDir.entryInfoList(QStringList() << "*.exe", QDir::Files);
+        QFileInfoList exeList = srcDir.entryInfoList(QStringList() << QStringLiteral("*.exe"), QDir::Files);
         if(exeList.isEmpty())
         {
-            appendLog("❌ 源目录找不到exe主程序，终止Enigma打包");
+            appendLog(QStringLiteral("❌ 源目录找不到exe主程序，终止Enigma打包"));
             return false;
         }
         mainExe     = exeList.first().absoluteFilePath();
         exeBaseName = exeList.first().completeBaseName();
-        appendLog(QString("⚠️ 未找到目标EXE，回退使用目录内第一个exe：%1").arg(mainExe));
+        appendLog(QStringLiteral("⚠️ 未找到目标EXE，回退使用目录内第一个exe：%1").arg(mainExe));
     }
 
     // 单文件名追加 Qt 版本与编译器标识，同目录可区分不同 Qt 版本/编译器产物：
@@ -591,15 +591,15 @@ bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
     const QString compilerTag = compilerType.isEmpty() ? QStringLiteral("unknown") : compilerType.toLower();
     const QString singleName  = QStringLiteral("%1_Single-qt%2-%3.exe").arg(exeBaseName, versionTag, compilerTag);
     QString       singleExePath = srcDir.filePath(singleName);
-    QString       evbPath       = srcDir.filePath("enigma_temp.evb");
-    appendLog(QString("ℹ️ 单文件命名：%1（Qt %2 / %3）").arg(singleName, versionTag, compilerTag));
+    QString       evbPath       = srcDir.filePath(QStringLiteral("enigma_temp.evb"));
+    appendLog(QStringLiteral("ℹ️ 单文件命名：%1（Qt %2 / %3）").arg(singleName, versionTag, compilerTag));
 
     QFile::remove(evbPath);
     QFile evbFile(evbPath);
     if(!evbFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        appendLog(QString("❌ 无法创建evb工程文件：%1").arg(evbPath));
-        appendLog(QString("打开失败原因：%1").arg(evbFile.errorString()));
+        appendLog(QStringLiteral("❌ 无法创建evb工程文件：%1").arg(evbPath));
+        appendLog(QStringLiteral("打开失败原因：%1").arg(evbFile.errorString()));
         return false;
     }
 
@@ -625,22 +625,22 @@ bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
     // ==================================================================
 
     QTextStream evbStream(&evbFile);
-    evbStream << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-    evbStream << "<Project>\n";
-    evbStream << "  <InputFile>" << escapeXml(QDir::toNativeSeparators(mainExe)) << "</InputFile>\n";
-    evbStream << "  <OutputFile>" << escapeXml(QDir::toNativeSeparators(singleExePath)) << "</OutputFile>\n";
-    evbStream << "  <Files>\n";
-    evbStream << "    <Enabled>True</Enabled>\n";
-    evbStream << "    <DeleteExtractedOnExit>False</DeleteExtractedOnExit>\n";
-    evbStream << "    <CompressFiles>True</CompressFiles>\n";
-    evbStream << "    <Files>\n";
+    evbStream << QStringLiteral("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+    evbStream << QStringLiteral("<Project>\n");
+    evbStream << QStringLiteral("  <InputFile>") << escapeXml(QDir::toNativeSeparators(mainExe)) << QStringLiteral("</InputFile>\n");
+    evbStream << QStringLiteral("  <OutputFile>") << escapeXml(QDir::toNativeSeparators(singleExePath)) << QStringLiteral("</OutputFile>\n");
+    evbStream << QStringLiteral("  <Files>\n");
+    evbStream << QStringLiteral("    <Enabled>True</Enabled>\n");
+    evbStream << QStringLiteral("    <DeleteExtractedOnExit>False</DeleteExtractedOnExit>\n");
+    evbStream << QStringLiteral("    <CompressFiles>True</CompressFiles>\n");
+    evbStream << QStringLiteral("    <Files>\n");
     appendEvbFolder(evbStream, srcDir, QStringLiteral("%DEFAULT FOLDER%"), 1);
-    evbStream << "    </Files>\n";
-    evbStream << "  </Files>\n";
-    evbStream << "</Project>\n";
+    evbStream << QStringLiteral("    </Files>\n");
+    evbStream << QStringLiteral("  </Files>\n");
+    evbStream << QStringLiteral("</Project>\n");
     evbStream.flush();
     evbFile.close();
-    appendLog(QString("✅ 生成临时evb：%1").arg(evbPath));
+    appendLog(QStringLiteral("✅ 生成临时evb：%1").arg(evbPath));
 
     QProcess    enigmaProc;
     QStringList args;
@@ -649,34 +649,34 @@ bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
     enigmaProc.setArguments(args);
     enigmaProc.setProcessChannelMode(QProcess::MergedChannels);
 
-    appendLog(QString("执行EnigmaVB Console: %1 %2").arg(enigmaConsolePath, args.join(" ")));
+    appendLog(QStringLiteral("执行EnigmaVB Console: %1 %2").arg(enigmaConsolePath, args.join(QStringLiteral(" "))));
     enigmaProc.start();
     if(!enigmaProc.waitForFinished(-1))
     {
-        appendLog("❌ EnigmaVB执行超时");
+        appendLog(QStringLiteral("❌ EnigmaVB执行超时"));
         enigmaProc.kill();
         QFile::remove(evbPath);
         return false;
     }
-    QString out = enigmaProc.readAllStandardOutput();
+    QString out = QString::fromUtf8(enigmaProc.readAllStandardOutput());
     if(!out.isEmpty())
     {
-        appendLog("Enigma Output:\n" + out);
+        appendLog(QStringLiteral("Enigma Output:\n") + out);
     }
 
     bool ok = false;
     if(enigmaProc.exitCode() == 0 && QFile::exists(singleExePath))
     {
-        appendLog(QString("✅ Enigma打包成功！单文件输出：%1").arg(singleExePath));
+        appendLog(QStringLiteral("✅ Enigma打包成功！单文件输出：%1").arg(singleExePath));
         ok = true;
     }
     else
     {
-        appendLog(QString("❌ EnigmaVB失败，exitCode=%1").arg(enigmaProc.exitCode()));
+        appendLog(QStringLiteral("❌ EnigmaVB失败，exitCode=%1").arg(enigmaProc.exitCode()));
     }
 
     QFile::remove(evbPath);
-    appendLog("已删除临时evb工程文件");
+    appendLog(QStringLiteral("已删除临时evb工程文件"));
     return ok;
 }
 
@@ -694,10 +694,10 @@ QString MainWindow::escapeXml(const QString &text)
 void MainWindow::appendEvbFolder(QTextStream &stream, const QDir &dir, const QString &virtualName, int depth)
 {
     const QString pad = QString(depth * 2, QLatin1Char(' '));
-    stream << pad << "<File>\n";
-    stream << pad << "  <Type>3</Type>\n";
-    stream << pad << "  <Name>" << escapeXml(virtualName) << "</Name>\n";
-    stream << pad << "  <Files>\n";
+    stream << pad << QStringLiteral("<File>\n");
+    stream << pad << QStringLiteral("  <Type>3</Type>\n");
+    stream << pad << QStringLiteral("  <Name>") << escapeXml(virtualName) << QStringLiteral("</Name>\n");
+    stream << pad << QStringLiteral("  <Files>\n");
 
     // 当前目录下的普通文件（跳过临时evb工程文件与已生成的单文件自身）
     const QFileInfoList fileList = dir.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
@@ -710,12 +710,12 @@ void MainWindow::appendEvbFolder(QTextStream &stream, const QDir &dir, const QSt
         {
             continue;
         }
-        const QString filePad = pad + "    ";
-        stream << filePad << "<File>\n";
-        stream << filePad << "  <Type>2</Type>\n";
-        stream << filePad << "  <Name>" << escapeXml(fileInfo.fileName()) << "</Name>\n";
-        stream << filePad << "  <File>" << escapeXml(QDir::toNativeSeparators(fileInfo.absoluteFilePath())) << "</File>\n";
-        stream << filePad << "</File>\n";
+        const QString filePad = pad + QStringLiteral("    ");
+        stream << filePad << QStringLiteral("<File>\n");
+        stream << filePad << QStringLiteral("  <Type>2</Type>\n");
+        stream << filePad << QStringLiteral("  <Name>") << escapeXml(fileInfo.fileName()) << QStringLiteral("</Name>\n");
+        stream << filePad << QStringLiteral("  <File>") << escapeXml(QDir::toNativeSeparators(fileInfo.absoluteFilePath())) << QStringLiteral("</File>\n");
+        stream << filePad << QStringLiteral("</File>\n");
     }
 
     // 递归子目录，保持部署目录的相对结构
@@ -726,12 +726,12 @@ void MainWindow::appendEvbFolder(QTextStream &stream, const QDir &dir, const QSt
         // 会导致 Enigma 报 "File does not exist"；且运行时写入不回写 Single，打入也无益
         if(subDirInfo.fileName().compare(QStringLiteral("data"), Qt::CaseInsensitive) == 0)
         {
-            appendLog(QString("ℹ️ 跳过运行时数据目录：%1").arg(subDirInfo.absoluteFilePath()));
+            appendLog(QStringLiteral("ℹ️ 跳过运行时数据目录：%1").arg(subDirInfo.absoluteFilePath()));
             continue;
         }
         appendEvbFolder(stream, QDir(subDirInfo.absoluteFilePath()), subDirInfo.fileName(), depth + 1);
     }
 
-    stream << pad << "  </Files>\n";
-    stream << pad << "</File>\n";
+    stream << pad << QStringLiteral("  </Files>\n");
+    stream << pad << QStringLiteral("</File>\n");
 }
