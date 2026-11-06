@@ -7,6 +7,7 @@
 #include <QStringList>
 
 class QTextStream;
+class QCloseEvent;
 
 QT_BEGIN_NAMESPACE
 
@@ -33,6 +34,10 @@ public:
     void runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe,
                          const QString &qtVersion, const QString &compilerType);
     bool detectQtCompiler(const QString &qtBinDir, QString &compilerType, QString &qtVersion);
+
+protected:
+    //关闭窗口时先结束还在跑的子进程，否则界面消失后主进程会一直等它退出，看起来像“程序没关掉”
+    void closeEvent(QCloseEvent *event) override;
 
 // QT_NO_KEYWORDS 已启用，关键字写法（slots/signals/emit）被禁用，必须用带 Q_ 前缀的宏
 private Q_SLOTS:
@@ -69,6 +74,7 @@ private:
     // 本次打包的 Qt 版本与编译器类型，供 Enigma 单文件命名（如 _Single-qt6.8.3-MinGW64.exe）使用
     QString currentQtVersion;
     QString currentCompilerType;
+    bool    shuttingDown;    // 窗口正在关闭：置位后回调不再发起重试或封包，避免退出被拖住
 
     bool loadSettings();
     bool saveSettings();
@@ -93,6 +99,7 @@ private:
     //已加载的 DLL，但允许在同一目录内改名，因此把被锁文件改名让位后重跑即可完成部署。
     int  backupLockedFilesFromOutput();
     void restartDeployProcess();
+    void stopRunningProcesses();
     //dirPath 为空时清理程序自身所在目录；打包结束、封包结束、程序退出时都会调用一次，
     //真正被占用删不掉的文件留到下次启动再清
     void cleanupLockedBackups(const QString &dirPath = QString());

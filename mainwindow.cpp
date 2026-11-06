@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QCloseEvent>
 #include <QCoreApplication>
 #include <QRegularExpression>
 #include <QFile>
@@ -21,7 +22,7 @@
 //VS 安装根目录的首次默认值，之后以 config.ini 中保存的值为准
 const QString MainWindow::DEFAULT_VS_ROOT_DIR = QStringLiteral("C:/Program Files/Microsoft Visual Studio");
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow)
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow), shuttingDown(false)
 {
     ui->setupUi(this);
 
@@ -50,9 +51,36 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     cleanupLockedBackups();
 }
 
+void MainWindow::stopRunningProcesses()
+{
+    //windeployqt 与封包器都是异步子进程，窗口关掉后主进程会一直等它们结束；
+    //enigmavbconsole 一次封包可能跑很久，不主动结束就会让进程残留，文件也一直被锁
+    QProcess *processList[2] = { deployProcess, enigmaProcess };
+    for(int i = 0; i < 2; ++i)
+    {
+        QProcess *proc = processList[i];
+        if(proc == Q_NULLPTR || proc->state() == QProcess::NotRunning)
+        {
+            continue;
+        }
+        proc->kill();
+        proc->waitForFinished(3000);
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    //置位后两个 finished 回调不再发起重试或封包，避免关窗这一刻又拉起新进程
+    shuttingDown = true;
+    stopRunningProcesses();
+    QMainWindow::closeEvent(event);
+}
+
 MainWindow::~MainWindow()
 {
     saveSettings();
+    shuttingDown = true;
+    stopRunningProcesses();
     //退出前再清一次：打包其它程序时，对方若已退出这些备份文件就能删掉了
     cleanupLockedBackups();
     delete ui;
@@ -482,6 +510,10 @@ void MainWindow::on_btnStopDeploy_clicked()
 
 void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
 {
+    if(shuttingDown)
+    {
+        return;    //窗口已在关闭，不再发起重试或封包
+    }
     if(status == QProcess::NormalExit && exitCode == 0)
     {
         appendLog(QStringLiteral("✅ windeployqt执行完成"));
@@ -1130,6 +1162,10 @@ void MainWindow::onEnigmaReadyRead()
 
 void MainWindow::onEnigmaFinished(int exitCode, QProcess::ExitStatus status)
 {
+    if(shuttingDown)
+    {
+        return;    //窗口已在关闭，不再处理封包结果
+    }
     //进程结束后可能还有未读的输出尾巴
     QByteArray tail = enigmaProcess->readAllStandardOutput();
     if(!tail.isEmpty())
