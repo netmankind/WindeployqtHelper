@@ -21,6 +21,9 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
+    //VS 安装根目录的首次默认值：配好一次后写入 config.ini，后续沿用保存的值
+    static const QString DEFAULT_VS_ROOT_DIR;
+
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
@@ -38,6 +41,7 @@ private Q_SLOTS:
     void on_btnOpenOutput_clicked();
     void on_btnSelectQmlDir_clicked();
     void on_btnSelectEnigmaVb_clicked();
+    void on_btnSelectVsRoot_clicked();
 
     void on_btnStartDeploy_clicked();
     void on_btnStopDeploy_clicked();
@@ -83,6 +87,7 @@ private:
     QString getExeArchBits(const QString &exePath) const;
 
     // ---- VC 运行库复制（MSVC 部署）：windeployqt --compiler-runtime 在新版 VS 上可能找不到 Redist 路径 ----
-    QString findVcRuntimeDir() const;
+    //非 const：选择过程会写日志
+    QString findVcRuntimeDir();
     void copyVcRuntimeDlls(const QString &outputDir);
 };

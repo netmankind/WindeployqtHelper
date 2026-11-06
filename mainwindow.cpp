@@ -10,10 +10,14 @@
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QTextStream>
+#include <QVersionNumber>
 #include <QtEndian>
 
 #include "ui_mainwindow.h"
 #include "version.h"
+
+//VS 安装根目录的首次默认值，之后以 config.ini 中保存的值为准
+const QString MainWindow::DEFAULT_VS_ROOT_DIR = QStringLiteral("C:/Program Files/Microsoft Visual Studio");
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
@@ -62,6 +66,9 @@ bool MainWindow::loadSettings()
     ui->edtOutputDir->setText(settings.value(QStringLiteral("outputDir"), QStringLiteral("")).toString());
     ui->edtQmlDir->setText(settings.value(QStringLiteral("qmlDir"), QStringLiteral("")).toString());
     ui->edtEnigmaVbPath->setText(settings.value(QStringLiteral("enigmaVbConsole"), QStringLiteral("")).toString());
+    //VS 安装根目录：首次给默认路径，之后沿用保存过的值（VS 装在非 C 盘时用户只需改一次）
+    QString vsRootDir = settings.value(QStringLiteral("vsRootDir"), DEFAULT_VS_ROOT_DIR).toString();
+    ui->edtVsRootDir->setText(vsRootDir);
     settings.endGroup();
 
     settings.beginGroup(QStringLiteral("Options"));
@@ -89,6 +96,7 @@ bool MainWindow::saveSettings()
     settings.setValue(QStringLiteral("outputDir"), ui->edtOutputDir->text());
     settings.setValue(QStringLiteral("qmlDir"), ui->edtQmlDir->text());
     settings.setValue(QStringLiteral("enigmaVbConsole"), ui->edtEnigmaVbPath->text());
+    settings.setValue(QStringLiteral("vsRootDir"), ui->edtVsRootDir->text());
     settings.endGroup();
 
     settings.beginGroup(QStringLiteral("Options"));
@@ -274,6 +282,17 @@ void MainWindow::on_btnSelectEnigmaVb_clicked()
     if(!filePath.isEmpty())
     {
         ui->edtEnigmaVbPath->setText(filePath);
+    }
+}
+
+void MainWindow::on_btnSelectVsRoot_clicked()
+{
+    QString dirPath = QFileDialog::getExistingDirectory(this,
+                                                        QStringLiteral("选择 Visual Studio 安装根目录"),
+                                                        dialogStartDir(ui->edtVsRootDir->text(), true));
+    if(!dirPath.isEmpty())
+    {
+        ui->edtVsRootDir->setText(QDir::toNativeSeparators(dirPath));
     }
 }
 
@@ -642,17 +661,23 @@ QString MainWindow::getExeArchBits(const QString &exePath) const
 }
 
 //定位 VC 运行库目录：优先取 Visual Studio 的 x64 Redist 官方副本，取不到时回退本机已安装的 System32
-QString MainWindow::findVcRuntimeDir() const
+QString MainWindow::findVcRuntimeDir()
 {
-    const QStringList vsRoots = QStringList() << QStringLiteral("C:/Program Files/Microsoft Visual Studio")
-                                              << QStringLiteral("C:/Program Files (x86)/Microsoft Visual Studio");
-    for(const QString &vsRoot: vsRoots)
+    //VS 安装根目录由界面配置（首次默认 DEFAULT_VS_ROOT_DIR），VS 装在其它盘时改一次即可，不做全盘搜索
+    const QString vsRoot = ui->edtVsRootDir->text().trimmed();
+    //根目录下常同时装着多个 VS 版本：用 Qt Bin 目录名里的 msvc 年份做"最接近"判据，
+    //例如 Qt6 msvc2022_64 优先取 2022，Qt5 msvc2019_64 优先取 2019
+    QRegularExpression yearRegExp(QStringLiteral("msvc(\\d{4})"), QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch yearMatch = yearRegExp.match(ui->edtQtBin->text());
+    const QString wantYear = yearMatch.hasMatch() ? yearMatch.captured(1) : QString();
+
+    QStringList candidateYears;    //候选所在的 VS 年份目录名
+    QStringList candidateVersions; //候选所在的 Redist 版本号
+    QStringList candidateDirs;     //候选 CRT 目录
+
+    QDir rootDir(vsRoot);
+    if(!vsRoot.isEmpty() && rootDir.exists())
     {
-        QDir rootDir(vsRoot);
-        if(!rootDir.exists())
-        {
-            continue;
-        }
         //目录层级：<VS根>/<年份>/<版本>/VC/Redist/MSVC/<号>/x64/Microsoft.VC*.CRT
         const QStringList yearDirs = rootDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
         for(const QString &yearName: yearDirs)
@@ -672,20 +697,53 @@ QString MainWindow::findVcRuntimeDir() const
                     const QStringList crtDirs = crtRoot.entryList(QStringList() << QStringLiteral("Microsoft.VC*.CRT"),
                                                                  QDir::Dirs | QDir::NoDotAndDotDot,
                                                                  QDir::Name);
-                    if(!crtDirs.isEmpty())
+                    if(crtDirs.isEmpty())
                     {
-                        //同一版本下可能有多个 CRT 子目录（如 VC143、VC145），取排序最后一个即最接近当前工具集的
-                        return crtRoot.filePath(crtDirs.last());
+                        continue;
                     }
+                    candidateYears.append(yearName);
+                    candidateVersions.append(versionName);
+                    //同一 Redist 版本下可能并存多个 CRT 子目录（VC143/VC145），取排序最后一个即更接近当前工具集
+                    candidateDirs.append(crtRoot.filePath(crtDirs.last()));
                 }
             }
         }
+    }
+
+    if(!candidateDirs.isEmpty())
+    {
+        int bestIndex = 0;
+        for(int i = 1; i < candidateDirs.size(); ++i)
+        {
+            //年份与目标工具集一致者优先；没有年份信息时退化为纯版本比较
+            const bool yearMatched = !wantYear.isEmpty() && candidateYears.at(i).contains(wantYear);
+            const bool bestYearMatched = !wantYear.isEmpty() && candidateYears.at(bestIndex).contains(wantYear);
+            if(yearMatched != bestYearMatched)
+            {
+                if(yearMatched)
+                {
+                    bestIndex = i;
+                }
+                continue;
+            }
+            //同年份（或都无法判断年份）时取 Redist 版本更高的一个，VC 运行库向后兼容旧 exe
+            if(QVersionNumber::fromString(candidateVersions.at(i)) > QVersionNumber::fromString(candidateVersions.at(bestIndex)))
+            {
+                bestIndex = i;
+            }
+        }
+        appendLog(QStringLiteral("ℹ️ VC运行库候选 %1 个（目标工具集年份：%2），选中 %3 / Redist %4")
+                  .arg(candidateDirs.size())
+                  .arg(wantYear.isEmpty() ? QStringLiteral("未识别") : wantYear)
+                  .arg(candidateYears.at(bestIndex), candidateVersions.at(bestIndex)));
+        return candidateDirs.at(bestIndex);
     }
 
     //回退：本机已装运行时（System32 的 vcruntime140.dll 即当前系统生效的那份）
     const QString systemDir = QStringLiteral("C:/Windows/System32");
     if(QFile::exists(systemDir + QStringLiteral("/vcruntime140.dll")))
     {
+        appendLog(QStringLiteral("ℹ️ “%1”下未找到 VC Redist，改用 System32 中已安装的运行库").arg(vsRoot));
         return systemDir;
     }
     return QString();

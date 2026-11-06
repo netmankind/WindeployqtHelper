@@ -126,6 +126,34 @@
          </item>
         </layout>
        </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="label_10">
+         <property name="text">
+          <string>VS安装目录:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="1">
+        <layout class="QHBoxLayout" name="horizontalLayout_10">
+         <item>
+          <widget class="QLineEdit" name="edtVsRootDir">
+           <property name="placeholderText">
+            <string>C:/Program Files/Microsoft Visual Studio</string>
+           </property>
+           <property name="toolTip">
+            <string>Visual Studio 安装根目录，用于查找 VC 运行库；留空或不存在时改用 System32 中的运行库</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnSelectVsRoot">
+           <property name="text">
+            <string>选择</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
       </layout>
      </widget>
     </item>
