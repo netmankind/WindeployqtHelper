@@ -11,10 +11,16 @@
 #include <QTextStream>
 
 #include "ui_mainwindow.h"
+#include "version.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+
+    // 标题栏显示中文程序名与版本号：工程会产出多份不同 Qt 版本/编译器的构建，
+    // 靠标题即可区分当前运行的是哪一版；版本号由 Version 模块提供，含本次编译时间
+    setWindowTitle(QStringLiteral("%1 v%2").arg(QStringLiteral("Qt 部署助手"), Version::getDisplayVersion()));
+
     deployProcess = new QProcess(this);
 
     connect(deployProcess, &QProcess::finished, this, &MainWindow::onDeployFinished);

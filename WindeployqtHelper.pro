@@ -17,6 +17,13 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x050F00
 TEMPLATE = app
 TARGET = WindeployqtHelper
 
+# ===================== 版本号 =====================
+# 版本信息集中在 version.h / version.cpp；version_stamp 必须在 include config.pri 之前
+# 打开——该开关的判断发生在 config.pri 被解析时，放在后面打开不会生效。
+# 作用：每次构建结束删除 version.o，迫使下次构建重编该文件，
+# 使 __DATE__/__TIME__ 始终等于本次编译时间（版本号随编译自动更新）
+CONFIG *= version_stamp
+
 include(QtCommonConfig/config.pri)
 
 # ===================== Qt版本判断 =====================
@@ -56,10 +63,12 @@ CONFIG(debug, debug|release) {
 
 SOURCES += \
     main.cpp \
-    mainwindow.cpp
+    mainwindow.cpp \
+    version.cpp
 
 HEADERS += \
-    mainwindow.h
+    mainwindow.h \
+    version.h
 
 FORMS += \
     mainwindow.ui
