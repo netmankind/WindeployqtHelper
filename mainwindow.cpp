@@ -712,22 +712,27 @@ QString MainWindow::findVcRuntimeDir()
 
     if(!candidateDirs.isEmpty())
     {
+        const int wantYearValue = wantYear.toInt();    //无年份信息时为 0
         int bestIndex = 0;
         for(int i = 1; i < candidateDirs.size(); ++i)
         {
-            //年份与目标工具集一致者优先；没有年份信息时退化为纯版本比较
-            const bool yearMatched = !wantYear.isEmpty() && candidateYears.at(i).contains(wantYear);
-            const bool bestYearMatched = !wantYear.isEmpty() && candidateYears.at(bestIndex).contains(wantYear);
-            if(yearMatched != bestYearMatched)
+            //按年份数值距离挑选：目标工具集是 2019 而本机没有 2019 时，2022 比 2026 更接近，
+            //不要盲目取最高版本（过新的运行库在部分机器上反而更容易出问题）
+            const int distance = qAbs(candidateYears.at(i).toInt() - wantYearValue);
+            const int bestDistance = qAbs(candidateYears.at(bestIndex).toInt() - wantYearValue);
+            if(distance != bestDistance)
             {
-                if(yearMatched)
+                if(distance < bestDistance)
                 {
                     bestIndex = i;
                 }
                 continue;
             }
-            //同年份（或都无法判断年份）时取 Redist 版本更高的一个，VC 运行库向后兼容旧 exe
-            if(QVersionNumber::fromString(candidateVersions.at(i)) > QVersionNumber::fromString(candidateVersions.at(bestIndex)))
+            //年份距离相同才比版本号：有目标年份时取同一年份内更高的版本；
+            //没有年份信息时取更低的版本，对老机器兼容性更好
+            const QVersionNumber version = QVersionNumber::fromString(candidateVersions.at(i));
+            const QVersionNumber bestVersion = QVersionNumber::fromString(candidateVersions.at(bestIndex));
+            if(wantYearValue > 0 ? version > bestVersion : version < bestVersion)
             {
                 bestIndex = i;
             }
@@ -736,6 +741,10 @@ QString MainWindow::findVcRuntimeDir()
                   .arg(candidateDirs.size())
                   .arg(wantYear.isEmpty() ? QStringLiteral("未识别") : wantYear)
                   .arg(candidateYears.at(bestIndex), candidateVersions.at(bestIndex)));
+        if(wantYearValue > 0 && candidateYears.at(bestIndex).toInt() != wantYearValue)
+        {
+            appendLog(QStringLiteral("ℹ️ 本机未找到 VS %1，已改用年份最接近的 VS %2 运行库").arg(wantYear, candidateYears.at(bestIndex)));
+        }
         return candidateDirs.at(bestIndex);
     }
 
