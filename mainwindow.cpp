@@ -10,6 +10,7 @@
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QTextStream>
+#include <QtEndian>
 
 #include "ui_mainwindow.h"
 #include "version.h"
@@ -346,6 +347,12 @@ void MainWindow::on_btnStartDeploy_clicked()
     {
         args << QStringLiteral("--no-plugins");
     }
+    if(ui->chkCopyVcRuntime->isChecked())
+    {
+        //MSVC 部署需要随包带上 VC 运行库；windeployqt 自身可能取不到 Redist 路径，
+        //部署完成后还会由 copyVcRuntimeDlls() 兜底复制
+        args << QStringLiteral("--compiler-runtime");
+    }
 
     appendLog(QStringLiteral("执行 windeployqt: %1 %2").arg(windeployqt, args.join(QStringLiteral(" "))));
     deployProcess->setProgram(windeployqt);
@@ -381,6 +388,10 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
         QString outputDir = ui->edtOutputDir->text().trimmed();
         //windeployqt 完成后校正 MinGW 运行库 DLL 来源，防止输出目录混入从其它 MinGW 目录复制来的版本
         fixMinGwRuntimeDlls(outputDir, findMinGwRuntimeDir(ui->edtQtBin->text().trimmed()));
+        if(ui->chkCopyVcRuntime->isChecked())
+        {
+            copyVcRuntimeDlls(outputDir);
+        }
         if(ui->chkEnigmaPack->isChecked())
         {
             QString enigmaConsolePath = ui->edtEnigmaVbPath->text().trimmed();
@@ -586,6 +597,134 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
     }
 }
 
+//读取目标exe的 PE 头判断位数，返回 "64" 或 "32"；不是有效 PE 文件时返回空字符串
+QString MainWindow::getExeArchBits(const QString &exePath) const
+{
+    QFile peFile(exePath);
+    if(!peFile.open(QIODevice::ReadOnly))
+    {
+        return QString();
+    }
+    if(peFile.read(2) != QByteArrayLiteral("MZ"))
+    {
+        return QString();
+    }
+    //e_lfanew：PE 头相对文件起始的偏移，位于 DOS 头 0x3C 处
+    if(!peFile.seek(0x3C))
+    {
+        return QString();
+    }
+    const QByteArray offsetBytes = peFile.read(4);
+    if(offsetBytes.size() != 4)
+    {
+        return QString();
+    }
+    const quint32 peHeaderOffset = qFromLittleEndian<quint32>(offsetBytes.constData());
+    if(!peFile.seek(peHeaderOffset))
+    {
+        return QString();
+    }
+    const QByteArray peHeader = peFile.read(6);    //4 字节签名 "PE\0\0" + 2 字节 Machine
+    if(peHeader.size() != 6)
+    {
+        return QString();
+    }
+    const quint16 machine = qFromLittleEndian<quint16>(peHeader.constData() + 4);
+    if(machine == 0x8664)    //IMAGE_FILE_MACHINE_AMD64
+    {
+        return QStringLiteral("64");
+    }
+    if(machine == 0x014C)    //IMAGE_FILE_MACHINE_I386
+    {
+        return QStringLiteral("32");
+    }
+    return QString();
+}
+
+//定位 VC 运行库目录：优先取 Visual Studio 的 x64 Redist 官方副本，取不到时回退本机已安装的 System32
+QString MainWindow::findVcRuntimeDir() const
+{
+    const QStringList vsRoots = QStringList() << QStringLiteral("C:/Program Files/Microsoft Visual Studio")
+                                              << QStringLiteral("C:/Program Files (x86)/Microsoft Visual Studio");
+    for(const QString &vsRoot: vsRoots)
+    {
+        QDir rootDir(vsRoot);
+        if(!rootDir.exists())
+        {
+            continue;
+        }
+        //目录层级：<VS根>/<年份>/<版本>/VC/Redist/MSVC/<号>/x64/Microsoft.VC*.CRT
+        const QStringList yearDirs = rootDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for(const QString &yearName: yearDirs)
+        {
+            const QStringList editionDirs = QDir(rootDir.filePath(yearName)).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+            for(const QString &editionName: editionDirs)
+            {
+                QDir redistDir(QDir(rootDir.filePath(yearName)).filePath(editionName + QStringLiteral("/VC/Redist/MSVC")));
+                if(!redistDir.exists())
+                {
+                    continue;
+                }
+                const QStringList versionDirs = redistDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+                for(const QString &versionName: versionDirs)
+                {
+                    QDir crtRoot(redistDir.filePath(versionName + QStringLiteral("/x64")));
+                    const QStringList crtDirs = crtRoot.entryList(QStringList() << QStringLiteral("Microsoft.VC*.CRT"),
+                                                                 QDir::Dirs | QDir::NoDotAndDotDot,
+                                                                 QDir::Name);
+                    if(!crtDirs.isEmpty())
+                    {
+                        //同一版本下可能有多个 CRT 子目录（如 VC143、VC145），取排序最后一个即最接近当前工具集的
+                        return crtRoot.filePath(crtDirs.last());
+                    }
+                }
+            }
+        }
+    }
+
+    //回退：本机已装运行时（System32 的 vcruntime140.dll 即当前系统生效的那份）
+    const QString systemDir = QStringLiteral("C:/Windows/System32");
+    if(QFile::exists(systemDir + QStringLiteral("/vcruntime140.dll")))
+    {
+        return systemDir;
+    }
+    return QString();
+}
+
+//把 VC 运行库 DLL 复制到输出目录：MSVC 版 exe 在未装运行库的机器上会直接报缺少 DLL
+void MainWindow::copyVcRuntimeDlls(const QString &outputDir)
+{
+    const QString srcDir = findVcRuntimeDir();
+    if(srcDir.isEmpty())
+    {
+        appendLog(QStringLiteral("⚠️ 未找到 VC 运行库目录（Visual Studio Redist 与 System32 均不可用），跳过复制"));
+        return;
+    }
+    appendLog(QStringLiteral("ℹ️ VC运行库来源目录：%1").arg(QDir::toNativeSeparators(srcDir)));
+
+    const QStringList dllNames = QStringList() << QStringLiteral("vcruntime140.dll") << QStringLiteral("vcruntime140_1.dll")
+                                               << QStringLiteral("msvcp140.dll") << QStringLiteral("msvcp140_1.dll")
+                                               << QStringLiteral("msvcp140_2.dll") << QStringLiteral("concrt140.dll");
+    for(const QString &dllName: dllNames)
+    {
+        QFileInfo srcFile(QDir(srcDir).filePath(dllName));
+        if(!srcFile.exists())
+        {
+            continue;    //运行库不保证每个 DLL 都存在，缺哪个跳过哪个
+        }
+        const QString dstPath = QDir(outputDir).filePath(dllName);
+        QFile::remove(dstPath);
+        if(QFile::copy(srcFile.absoluteFilePath(), dstPath))
+        {
+            appendLog(QStringLiteral("✅ VC运行库：%1（%2 字节）").arg(dllName).arg(srcFile.size()));
+        }
+        else
+        {
+            appendLog(QStringLiteral("⚠️ VC运行库复制失败：%1").arg(dllName));
+        }
+    }
+}
+
 void MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe, const QString &qtVersion, const QString &compilerType)
 {
     appendLog(QStringLiteral("\n===== Enigma Virtual Box Console 开始封包单文件 ====="));
@@ -615,10 +754,11 @@ void MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
         appendLog(QStringLiteral("⚠️ 未找到目标EXE，回退使用目录内第一个exe：%1").arg(mainExe));
     }
 
-    //单文件名追加 Qt 版本与编译器标识，同目录可区分不同 Qt 版本/编译器产物：
-    //如 App_Single-qt6.8.3-mingw.exe、App_Single-qt5.15.2-msvc.exe；版本/编译器缺失时用 unknown 占位
+    //单文件名追加 Qt 版本、编译器与位数标识，同目录可区分不同 Qt 版本/编译器产物：
+    //如 App_Single-qt6.8.3-MinGW64.exe、App_Single-qt5.15.2-MSVC64.exe；位数取目标exe的 PE 头，识别失败时不加位数
     const QString versionTag    = qtVersion.isEmpty() ? QStringLiteral("unknown") : qtVersion;
-    const QString compilerTag   = compilerType.isEmpty() ? QStringLiteral("unknown") : compilerType;
+    const QString archBits      = getExeArchBits(mainExe);
+    const QString compilerTag   = compilerType.isEmpty() ? QStringLiteral("unknown") : compilerType + archBits;
     const QString singleName    = QStringLiteral("%1_Single-qt%2-%3.exe").arg(exeBaseName, versionTag, compilerTag);
     QString       singleExePath = srcDir.filePath(singleName);
     QString       evbPath       = srcDir.filePath(QStringLiteral("enigma_temp.evb"));

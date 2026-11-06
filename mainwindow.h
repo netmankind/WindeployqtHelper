@@ -61,7 +61,7 @@ private:
     QString         enigmaSingleExePath; // 本次封包的目标单文件，用于结束后判定产出
     QString         lastExePath;         // 上一次已知的目标exe路径，用于判断路径是否真的变化
     QString         deployOutputBuffer; // 累积windeployqt输出，用于失败原因分析
-    // 本次打包的 Qt 版本与编译器类型，供 Enigma 单文件命名（如 _Single-qt6.8.3-mingw.exe）使用
+    // 本次打包的 Qt 版本与编译器类型，供 Enigma 单文件命名（如 _Single-qt6.8.3-MinGW64.exe）使用
     QString currentQtVersion;
     QString currentCompilerType;
 
@@ -78,4 +78,11 @@ private:
     // ---- MinGW 运行库 DLL 来源校正（windeployqt 可能从 PATH 其它 MinGW 目录复制错版本） ----
     QString findMinGwRuntimeDir(const QString &qtBinDir) const;
     void fixMinGwRuntimeDlls(const QString &outputDir, const QString &runtimeDir);
+
+    // ---- 目标exe位数识别：单文件名需要形如 MinGW64 / MSVC64 ----
+    QString getExeArchBits(const QString &exePath) const;
+
+    // ---- VC 运行库复制（MSVC 部署）：windeployqt --compiler-runtime 在新版 VS 上可能找不到 Redist 路径 ----
+    QString findVcRuntimeDir() const;
+    void copyVcRuntimeDlls(const QString &outputDir);
 };
