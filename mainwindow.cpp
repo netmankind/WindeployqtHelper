@@ -416,7 +416,33 @@ void MainWindow::on_btnStartDeploy_clicked()
     {
         //MSVC 部署需要随包带上 VC 运行库；windeployqt 自身可能取不到 Redist 路径，
         //部署完成后还会由 copyVcRuntimeDlls() 兜底复制
-        args << QStringLiteral("--compiler-runtime");
+        //就地打包时 windeployqt 对已存在的运行库文件是先删后拷，目标程序运行中删不掉会直接失败；
+        //MinGW 运行库在输出目录里已齐全时不必再传该参数
+        bool mingwRuntimeAllPresent = false;
+        if(inPlacePack)
+        {
+            const QStringList mingwRuntimeDlls = QStringList()
+                                                  << QStringLiteral("libgcc_s_seh-1.dll")
+                                                  << QStringLiteral("libstdc++-6.dll")
+                                                  << QStringLiteral("libwinpthread-1.dll");
+            mingwRuntimeAllPresent = true;
+            for(const QString &dllName: mingwRuntimeDlls)
+            {
+                if(!QFile::exists(outDir.filePath(dllName)))
+                {
+                    mingwRuntimeAllPresent = false;
+                    break;
+                }
+            }
+        }
+        if(mingwRuntimeAllPresent)
+        {
+            appendLog(QStringLiteral("ℹ️ 输出目录已存在完整的 MinGW 运行库，本次跳过 --compiler-runtime（避免删除被占用的同名 DLL）"));
+        }
+        else
+        {
+            args << QStringLiteral("--compiler-runtime");
+        }
     }
 
     appendLog(QStringLiteral("执行 windeployqt: %1 %2").arg(windeployqt, args.join(QStringLiteral(" "))));
