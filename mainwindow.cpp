@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -17,8 +18,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 {
     ui->setupUi(this);
 
-    // 标题栏显示中文程序名与版本号：工程会产出多份不同 Qt 版本/编译器的构建，
-    // 靠标题即可区分当前运行的是哪一版；版本号由 Version 模块提供，含本次编译时间
+    //标题栏显示中文程序名与版本号：工程会产出多份不同 Qt 版本/编译器的构建，
+    //靠标题即可区分当前运行的是哪一版；版本号由 Version 模块提供，含本次编译时间
     setWindowTitle(QStringLiteral("%1 v%2").arg(QStringLiteral("Qt 部署助手"), Version::getDisplayVersion()));
 
     deployProcess = new QProcess(this);
@@ -27,7 +28,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(deployProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::onDeployReadyReadStdout);
     connect(deployProcess, &QProcess::readyReadStandardError, this, &MainWindow::onDeployReadyReadStderr);
 
+    //Enigma 封包同样走异步：一次封包几十兆文件要跑很久，同步 waitForFinished 会让整个界面失去响应
+    enigmaProcess = new QProcess(this);
+    enigmaProcess->setProcessChannelMode(QProcess::MergedChannels);
+    connect(enigmaProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::onEnigmaReadyRead);
+    connect(enigmaProcess, &QProcess::finished, this, &MainWindow::onEnigmaFinished);
+
     loadSettings();
+
+    //记下当前目标exe路径：之后用于判断用户是否真的改了路径，只有改过才让输出目录跟随
+    lastExePath = ui->edtExePath->text();
 }
 
 MainWindow::~MainWindow()
@@ -178,15 +188,15 @@ bool MainWindow::clearDirectoryKeepSelf(const QDir &dir, const QStringList &keep
     return true;
 }
 
-// 计算文件/目录选择对话框的起始目录：跟随输入框当前已填的路径
+//计算文件/目录选择对话框的起始目录：跟随输入框当前已填的路径
 QString MainWindow::dialogStartDir(const QString &currentPath, bool currentIsDir) const
 {
     QString startDir = QDir::homePath();
-    QString path = currentPath.trimmed();
+    QString path     = currentPath.trimmed();
     if(!path.isEmpty())
     {
         QFileInfo info(path);
-        // currentIsDir=true（目录选择框）直接用当前目录；否则（文件选择框）用其所在目录
+        //currentIsDir=true（目录选择框）直接用当前目录；否则（文件选择框）用其所在目录
         QString dir = currentIsDir ? info.absoluteFilePath() : info.absolutePath();
         if(QDir(dir).exists())
         {
@@ -202,7 +212,28 @@ void MainWindow::on_btnSelectExe_clicked()
     if(!filePath.isEmpty())
     {
         ui->edtExePath->setText(filePath);
+        lastExePath = filePath;
+        //选完目标exe后输出目录默认跟随该exe所在目录：原地部署是最常见用法，省去再手动选一次，用户之后仍可改
+        ui->edtOutputDir->setText(QFileInfo(filePath).absolutePath());
     }
+}
+
+void MainWindow::on_edtExePath_editingFinished()
+{
+    //手输路径与按钮选择保持一致：exe 换了，输出目录跟着换。
+    //只在路径确实变化时跟随，否则用户单独编辑输出目录后一失焦就会被这里覆盖掉
+    QString exePath = ui->edtExePath->text().trimmed();
+    if(exePath == lastExePath)
+    {
+        return;
+    }
+    lastExePath = exePath;
+
+    if(exePath.isEmpty())
+    {
+        return;
+    }
+    ui->edtOutputDir->setText(QFileInfo(exePath).absolutePath());
 }
 
 void MainWindow::on_btnSelectQtBin_clicked()
@@ -266,13 +297,13 @@ void MainWindow::on_btnStartDeploy_clicked()
     QString compilerType;
     QString qtVersion;
     detectQtCompiler(qtBinDir, compilerType, qtVersion);
-    // 记录本次打包的 Qt 版本/编译器，供 Enigma 单文件命名使用
+    //记录本次打包的 Qt 版本/编译器，供 Enigma 单文件命名使用
     currentQtVersion    = qtVersion;
     currentCompilerType = compilerType;
 
-    // 输出目录若与目标exe所在目录相同，源exe必须始终保留，防止清空旧目录时删掉原文件
+    //输出目录若与目标exe所在目录相同，源exe必须始终保留，防止清空旧目录时删掉原文件
     QFileInfo exeInfo(exePath);
-    QDir outDir(outputDir);
+    QDir      outDir(outputDir);
     if(ui->chkCleanOld->isChecked())
     {
         appendLog(QStringLiteral("⚠️ 清空旧输出目录（保留目录本身，跳过配置的保留文件）"));
@@ -283,7 +314,7 @@ void MainWindow::on_btnStartDeploy_clicked()
     }
     outDir.mkpath(QStringLiteral("."));
 
-    // 拷贝exe到输出目录：目标与源为同一文件（输出目录=源exe目录）时跳过删除与复制，避免删掉原exe
+    //拷贝exe到输出目录：目标与源为同一文件（输出目录=源exe目录）时跳过删除与复制，避免删掉原exe
     QString destExe = outDir.filePath(exeInfo.fileName());
     if(exeInfo.canonicalFilePath() == QFileInfo(destExe).canonicalFilePath())
     {
@@ -321,7 +352,7 @@ void MainWindow::on_btnStartDeploy_clicked()
     deployProcess->setArguments(args);
     deployProcess->setWorkingDirectory(qtBinDir);
 
-    // 将配套 MinGW 工具链 bin 前置到 PATH，避免 windeployqt 从 PATH 中其它 MinGW 目录复制版本不匹配的运行库 DLL
+    //将配套 MinGW 工具链 bin 前置到 PATH，避免 windeployqt 从 PATH 中其它 MinGW 目录复制版本不匹配的运行库 DLL
     QString mingwRuntimeDir = findMinGwRuntimeDir(qtBinDir);
     if(!mingwRuntimeDir.isEmpty())
     {
@@ -348,20 +379,20 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
     {
         appendLog(QStringLiteral("✅ windeployqt执行完成"));
         QString outputDir = ui->edtOutputDir->text().trimmed();
-        // windeployqt 完成后校正 MinGW 运行库 DLL 来源，防止输出目录混入从其它 MinGW 目录复制来的版本
+        //windeployqt 完成后校正 MinGW 运行库 DLL 来源，防止输出目录混入从其它 MinGW 目录复制来的版本
         fixMinGwRuntimeDlls(outputDir, findMinGwRuntimeDir(ui->edtQtBin->text().trimmed()));
         if(ui->chkEnigmaPack->isChecked())
         {
             QString enigmaConsolePath = ui->edtEnigmaVbPath->text().trimmed();
-            // 以界面填写的目标EXE为准确定主程序与Single命名（目录内存在其它exe时不再取错）
-            QString targetExe         = QDir(outputDir).filePath(QFileInfo(ui->edtExePath->text().trimmed()).fileName());
+            //以界面填写的目标EXE为准确定主程序与Single命名（目录内存在其它exe时不再取错）
+            QString targetExe = QDir(outputDir).filePath(QFileInfo(ui->edtExePath->text().trimmed()).fileName());
             runEnigmaVbPack(outputDir, enigmaConsolePath, targetExe, currentQtVersion, currentCompilerType);
         }
     }
     else
     {
         appendLog(QStringLiteral("❌ windeployqt失败 exitCode=%1").arg(exitCode));
-        // 常见失败原因提示：目标exe与所选Qt Bin版本/编译器不匹配
+        //常见失败原因提示：目标exe与所选Qt Bin版本/编译器不匹配
         if(deployOutputBuffer.contains(QStringLiteral("does not seem to be a Qt executable"), Qt::CaseInsensitive))
         {
             appendLog(QStringLiteral("⚠️ 提示：目标exe与所选“Qt Bin目录”版本/编译器不匹配（例如用Qt6的windeployqt部署Qt5程序，或MinGW版windeployqt部署MSVC程序）。"));
@@ -445,8 +476,8 @@ bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType
     QString output = QString::fromUtf8(proc.readAllStandardOutput());
     appendLog(QStringLiteral("qmake -v 输出:\n") + output);
 
-    // 解析版本号：qmake -v 输出形如 "Using Qt version 6.8.3 in E:/Qt/6.8.3/mingw_64/lib"
-    const QRegularExpression versionRe(QStringLiteral("Using Qt version\\s+([0-9]+(?:\\.[0-9]+)*)"));
+    //解析版本号：qmake -v 输出形如 "Using Qt version 6.8.3 in E:/Qt/6.8.3/mingw_64/lib"
+    const QRegularExpression      versionRe(QStringLiteral("Using Qt version\\s+([0-9]+(?:\\.[0-9]+)*)"));
     const QRegularExpressionMatch versionMatch = versionRe.match(output);
     if(versionMatch.hasMatch())
     {
@@ -469,22 +500,22 @@ bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType
     return true;
 }
 
-// 定位与所选 Qt Bin 配套的 MinGW 工具链 bin 目录（含 libstdc++-6.dll 等运行库 DLL）
+//定位与所选 Qt Bin 配套的 MinGW 工具链 bin 目录（含 libstdc++-6.dll 等运行库 DLL）
 QString MainWindow::findMinGwRuntimeDir(const QString &qtBinDir) const
 {
-    // 1) Qt5 的 mingw kit（如 E:/Qt/5.15.2/mingw81_64/bin）自身就带运行库 DLL
+    //1) Qt5 的 mingw kit（如 E:/Qt/5.15.2/mingw81_64/bin）自身就带运行库 DLL
     QDir qtBin(qtBinDir);
     if(QFile::exists(qtBin.filePath(QStringLiteral("libstdc++-6.dll"))))
     {
         return qtBin.absolutePath();
     }
 
-    // 2) 官方安装布局：qtBinDir = <Qt根>/<版本>/<kit>/bin，工具链在 <Qt根>/Tools/mingw*/bin
+    //2) 官方安装布局：qtBinDir = <Qt根>/<版本>/<kit>/bin，工具链在 <Qt根>/Tools/mingw*/bin
     QDir qtRoot = qtBin;
-    qtRoot.cdUp();   // <Qt根>/<版本>/<kit>
-    qtRoot.cdUp();   // <Qt根>/<版本>
-    qtRoot.cdUp();   // <Qt根>
-    const QDir toolsDir(qtRoot.filePath(QStringLiteral("Tools")));
+    qtRoot.cdUp();    //<Qt根>/<版本>/<kit>
+    qtRoot.cdUp();    //<Qt根>/<版本>
+    qtRoot.cdUp();    //<Qt根>
+    const QDir  toolsDir(qtRoot.filePath(QStringLiteral("Tools")));
     QStringList candidates;
     if(toolsDir.exists())
     {
@@ -500,14 +531,14 @@ QString MainWindow::findMinGwRuntimeDir(const QString &qtBinDir) const
     }
     if(!candidates.isEmpty())
     {
-        candidates.sort();   // 字典序取最后（如 mingw1310_64 > mingw1120_64 > mingw810_64），通常对应最高 Qt 版本
+        candidates.sort();    //字典序取最后（如 mingw1310_64 > mingw1120_64 > mingw810_64），通常对应最高 Qt 版本
         return candidates.last();
     }
     return QString();
 }
 
-// windeployqt 部署完成后，把输出目录中的 MinGW 运行库 DLL 从配套工具链重新复制覆盖，
-// 防止 windeployqt 从 PATH 中其它 MinGW 目录复制来版本不匹配的 DLL
+//windeployqt 部署完成后，把输出目录中的 MinGW 运行库 DLL 从配套工具链重新复制覆盖，
+//防止 windeployqt 从 PATH 中其它 MinGW 目录复制来版本不匹配的 DLL
 void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &runtimeDir)
 {
     if(runtimeDir.isEmpty())
@@ -516,25 +547,25 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
         return;
     }
     const QStringList runtimeDlls = QStringList()
-        << QStringLiteral("libstdc++-6.dll")
-        << QStringLiteral("libgcc_s_seh-1.dll")
-        << QStringLiteral("libgcc_s_dw2-1.dll")
-        << QStringLiteral("libwinpthread-1.dll");
+                                 << QStringLiteral("libstdc++-6.dll")
+                                 << QStringLiteral("libgcc_s_seh-1.dll")
+                                 << QStringLiteral("libgcc_s_dw2-1.dll")
+                                 << QStringLiteral("libwinpthread-1.dll");
     for(const QString &dllName: runtimeDlls)
     {
         QFileInfo src(runtimeDir + QStringLiteral("/") + dllName);
         if(!src.exists())
         {
-            continue;   // 工具链无此 DLL（如 32 位无 seh）则跳过
+            continue;    //工具链无此 DLL（如 32 位无 seh）则跳过
         }
         QFileInfo dst(outputDir + QStringLiteral("/") + dllName);
         if(!dst.exists())
         {
-            continue;   // 输出目录没有该 DLL（如 MSVC 部署）则不动
+            continue;    //输出目录没有该 DLL（如 MSVC 部署）则不动
         }
         QString srcPath = QDir::toNativeSeparators(src.absoluteFilePath());
         QString dstPath = QDir::toNativeSeparators(dst.absoluteFilePath());
-        // 先复制临时文件再替换，避免复制失败时破坏原文件
+        //先复制临时文件再替换，避免复制失败时破坏原文件
         if(QFile::copy(src.absoluteFilePath(), dst.absoluteFilePath() + QStringLiteral(".tmp")))
         {
             QFile::remove(dst.absoluteFilePath());
@@ -555,14 +586,13 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
     }
 }
 
-bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe,
-                                 const QString &qtVersion, const QString &compilerType)
+void MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe, const QString &qtVersion, const QString &compilerType)
 {
     appendLog(QStringLiteral("\n===== Enigma Virtual Box Console 开始封包单文件 ====="));
     QDir srcDir(sourceDir);
 
-    // 主程序必须以界面选择的目标EXE为准：Single文件名 = 目标EXE基名 + "_Single" + 版本/编译器后缀
-    // 目录里若存在其它exe（如旧版本exe、附带工具），枚举第一个exe会取错主程序与命名，故不能再用exeList.first()
+    //主程序必须以界面选择的目标EXE为准：Single文件名 = 目标EXE基名 + "_Single" + 版本/编译器后缀
+    //目录里若存在其它exe（如旧版本exe、附带工具），枚举第一个exe会取错主程序与命名，故不能再用exeList.first()
     QString mainExe;
     QString exeBaseName;
     if(!targetExe.isEmpty() && QFile::exists(targetExe))
@@ -573,23 +603,23 @@ bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
     }
     else
     {
-        // 兼容旧行为：未传入目标exe时回退取目录内第一个exe（含多个exe时可能取错，仅作兜底）
+        //兼容旧行为：未传入目标exe时回退取目录内第一个exe（含多个exe时可能取错，仅作兜底）
         QFileInfoList exeList = srcDir.entryInfoList(QStringList() << QStringLiteral("*.exe"), QDir::Files);
         if(exeList.isEmpty())
         {
             appendLog(QStringLiteral("❌ 源目录找不到exe主程序，终止Enigma打包"));
-            return false;
+            return;
         }
         mainExe     = exeList.first().absoluteFilePath();
         exeBaseName = exeList.first().completeBaseName();
         appendLog(QStringLiteral("⚠️ 未找到目标EXE，回退使用目录内第一个exe：%1").arg(mainExe));
     }
 
-    // 单文件名追加 Qt 版本与编译器标识，同目录可区分不同 Qt 版本/编译器产物：
-    // 如 App_Single-qt6.8.3-mingw.exe、App_Single-qt5.15.2-msvc.exe；版本/编译器缺失时用 unknown 占位
-    const QString versionTag  = qtVersion.isEmpty() ? QStringLiteral("unknown") : qtVersion;
-    const QString compilerTag = compilerType.isEmpty() ? QStringLiteral("unknown") : compilerType.toLower();
-    const QString singleName  = QStringLiteral("%1_Single-qt%2-%3.exe").arg(exeBaseName, versionTag, compilerTag);
+    //单文件名追加 Qt 版本与编译器标识，同目录可区分不同 Qt 版本/编译器产物：
+    //如 App_Single-qt6.8.3-mingw.exe、App_Single-qt5.15.2-msvc.exe；版本/编译器缺失时用 unknown 占位
+    const QString versionTag    = qtVersion.isEmpty() ? QStringLiteral("unknown") : qtVersion;
+    const QString compilerTag   = compilerType.isEmpty() ? QStringLiteral("unknown") : compilerType;
+    const QString singleName    = QStringLiteral("%1_Single-qt%2-%3.exe").arg(exeBaseName, versionTag, compilerTag);
     QString       singleExePath = srcDir.filePath(singleName);
     QString       evbPath       = srcDir.filePath(QStringLiteral("enigma_temp.evb"));
     appendLog(QStringLiteral("ℹ️ 单文件命名：%1（Qt %2 / %3）").arg(singleName, versionTag, compilerTag));
@@ -600,29 +630,29 @@ bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
     {
         appendLog(QStringLiteral("❌ 无法创建evb工程文件：%1").arg(evbPath));
         appendLog(QStringLiteral("打开失败原因：%1").arg(evbFile.errorString()));
-        return false;
+        return;
     }
 
-    // ==================================================================
-    // Enigma Virtual Box 11.30 的 .evb 工程文件是 XML 格式（非 INI）。
-    // 旧版 INI 模板已被官方控制台拒绝（"Project file is invalid!"），
-    // 这里保留注释以便追溯：
+    //==================================================================
+    //Enigma Virtual Box 11.30 的 .evb 工程文件是 XML 格式（非 INI）。
+    //旧版 INI 模板已被官方控制台拒绝（"Project file is invalid!"），
+    //这里保留注释以便追溯：
     //
-    //   QString evbTemplate = R"([Enigma Project]
-    // MainExe=%1
-    // OutputFile=%2
-    // CompressFiles=1
-    // DeleteExtractedOnExit=0
-    // VirtualizeFiles=1
-    // [Files]
-    // AddFolderRecursive=%3
-    // )";
-    //   QString evbContent  = evbTemplate.arg(
-    //       QDir::toNativeSeparators(mainExe),
-    //       QDir::toNativeSeparators(singleExePath),
-    //       QDir::toNativeSeparators(sourceDir));
-    //   evbFile.write(evbContent.toUtf8());
-    // ==================================================================
+    //  QString evbTemplate = R"([Enigma Project]
+    //MainExe=%1
+    //OutputFile=%2
+    //CompressFiles=1
+    //DeleteExtractedOnExit=0
+    //VirtualizeFiles=1
+    //[Files]
+    //AddFolderRecursive=%3
+    //)";
+    //  QString evbContent  = evbTemplate.arg(
+    //      QDir::toNativeSeparators(mainExe),
+    //      QDir::toNativeSeparators(singleExePath),
+    //      QDir::toNativeSeparators(sourceDir));
+    //  evbFile.write(evbContent.toUtf8());
+    //==================================================================
 
     QTextStream evbStream(&evbFile);
     evbStream << QStringLiteral("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
@@ -642,42 +672,61 @@ bool MainWindow::runEnigmaVbPack(const QString &sourceDir, const QString &enigma
     evbFile.close();
     appendLog(QStringLiteral("✅ 生成临时evb：%1").arg(evbPath));
 
-    QProcess    enigmaProc;
+    if(enigmaProcess->state() != QProcess::NotRunning)
+    {
+        appendLog(QStringLiteral("⚠️ 上一次 Enigma 封包仍在进行，本次不重复启动"));
+        QFile::remove(evbPath);
+        return;
+    }
+
+    //异步启动：路径先存成员，进程结束后由 onEnigmaFinished 判定产出并清理临时工程文件
+    enigmaEvbPath       = evbPath;
+    enigmaSingleExePath = singleExePath;
+
     QStringList args;
     args << evbPath;
-    enigmaProc.setProgram(enigmaConsolePath);
-    enigmaProc.setArguments(args);
-    enigmaProc.setProcessChannelMode(QProcess::MergedChannels);
-
     appendLog(QStringLiteral("执行EnigmaVB Console: %1 %2").arg(enigmaConsolePath, args.join(QStringLiteral(" "))));
-    enigmaProc.start();
-    if(!enigmaProc.waitForFinished(-1))
+    appendLog(QStringLiteral("Enigma Output:"));
+    enigmaProcess->setProgram(enigmaConsolePath);
+    enigmaProcess->setArguments(args);
+    enigmaProcess->start();
+}
+
+void MainWindow::onEnigmaReadyRead()
+{
+    QByteArray chunk = enigmaProcess->readAllStandardOutput();
+    if(chunk.isEmpty())
     {
-        appendLog(QStringLiteral("❌ EnigmaVB执行超时"));
-        enigmaProc.kill();
-        QFile::remove(evbPath);
-        return false;
+        return;
     }
-    QString out = QString::fromUtf8(enigmaProc.readAllStandardOutput());
-    if(!out.isEmpty())
+    appendLog(QString::fromUtf8(chunk));
+}
+
+void MainWindow::onEnigmaFinished(int exitCode, QProcess::ExitStatus status)
+{
+    //进程结束后可能还有未读的输出尾巴
+    QByteArray tail = enigmaProcess->readAllStandardOutput();
+    if(!tail.isEmpty())
     {
-        appendLog(QStringLiteral("Enigma Output:\n") + out);
+        appendLog(QString::fromUtf8(tail));
     }
 
-    bool ok = false;
-    if(enigmaProc.exitCode() == 0 && QFile::exists(singleExePath))
+    if(!enigmaEvbPath.isEmpty())
     {
-        appendLog(QStringLiteral("✅ Enigma打包成功！单文件输出：%1").arg(singleExePath));
-        ok = true;
+        QFile::remove(enigmaEvbPath);
+        enigmaEvbPath.clear();
+    }
+
+    if(status == QProcess::NormalExit && exitCode == 0 && QFile::exists(enigmaSingleExePath))
+    {
+        appendLog(QStringLiteral("✅ Enigma打包成功！单文件输出：%1").arg(enigmaSingleExePath));
     }
     else
     {
-        appendLog(QStringLiteral("❌ EnigmaVB失败，exitCode=%1").arg(enigmaProc.exitCode()));
+        appendLog(QStringLiteral("❌ EnigmaVB失败，exitCode=%1").arg(exitCode));
     }
-
-    QFile::remove(evbPath);
+    enigmaSingleExePath.clear();
     appendLog(QStringLiteral("已删除临时evb工程文件"));
-    return ok;
 }
 
 QString MainWindow::escapeXml(const QString &text)
@@ -699,14 +748,13 @@ void MainWindow::appendEvbFolder(QTextStream &stream, const QDir &dir, const QSt
     stream << pad << QStringLiteral("  <Name>") << escapeXml(virtualName) << QStringLiteral("</Name>\n");
     stream << pad << QStringLiteral("  <Files>\n");
 
-    // 当前目录下的普通文件（跳过临时evb工程文件与已生成的单文件自身）
+    //当前目录下的普通文件（跳过临时evb工程文件与已生成的单文件自身）
     const QFileInfoList fileList = dir.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
-    for(const QFileInfo &fileInfo : fileList)
+    for(const QFileInfo &fileInfo: fileList)
     {
-        // 兼容新旧单文件命名：旧 xxx_Single.exe、新 xxx_Single-qt<版本>-<编译器>.exe，均不重复打入
+        //兼容新旧单文件命名：旧 xxx_Single.exe、新 xxx_Single-qt<版本>-<编译器>.exe，均不重复打入
         const QString fileName = fileInfo.fileName();
-        if(fileName == QStringLiteral("enigma_temp.evb") ||
-           (fileName.contains(QStringLiteral("_Single")) && fileName.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)))
+        if(fileName == QStringLiteral("enigma_temp.evb") || (fileName.contains(QStringLiteral("_Single")) && fileName.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)))
         {
             continue;
         }
@@ -718,12 +766,12 @@ void MainWindow::appendEvbFolder(QTextStream &stream, const QDir &dir, const QSt
         stream << filePad << QStringLiteral("</File>\n");
     }
 
-    // 递归子目录，保持部署目录的相对结构
+    //递归子目录，保持部署目录的相对结构
     const QFileInfoList subDirList = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    for(const QFileInfo &subDirInfo : subDirList)
+    for(const QFileInfo &subDirInfo: subDirList)
     {
-        // 跳过运行时数据目录：历史记录db/导出文件等由程序动态生成删除，打包瞬间文件可能不存在或正被占用，
-        // 会导致 Enigma 报 "File does not exist"；且运行时写入不回写 Single，打入也无益
+        //跳过运行时数据目录：历史记录db/导出文件等由程序动态生成删除，打包瞬间文件可能不存在或正被占用，
+        //会导致 Enigma 报 "File does not exist"；且运行时写入不回写 Single，打入也无益
         if(subDirInfo.fileName().compare(QStringLiteral("data"), Qt::CaseInsensitive) == 0)
         {
             appendLog(QStringLiteral("ℹ️ 跳过运行时数据目录：%1").arg(subDirInfo.absoluteFilePath()));
