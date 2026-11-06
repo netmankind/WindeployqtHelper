@@ -393,10 +393,10 @@ win32 {
     isEmpty(RC_FILE): {
         #用 RC_FILE 后，QMAKE_TARGET_* / RC_ICONS / VERSION 等变量失效
         isEmpty(VERSION): VERSION = 1.0.0.0    # major.minor.patch.build
-        isEmpty(QMAKE_TARGET_COMPANY):     QMAKE_TARGET_COMPANY     = "中地装（重庆）地质装备有限公司"
+        #isEmpty(QMAKE_TARGET_COMPANY):     QMAKE_TARGET_COMPANY     = ""
         isEmpty(QMAKE_TARGET_PRODUCT):     QMAKE_TARGET_PRODUCT     = $$PRODUCT_NAME
         isEmpty(QMAKE_TARGET_DESCRIPTION): QMAKE_TARGET_DESCRIPTION = $$PRODUCT_NAME
-        isEmpty(QMAKE_TARGET_COPYRIGHT):   QMAKE_TARGET_COPYRIGHT   = "Copyright 2026 中地装（重庆）地质装备有限公司"
+        #isEmpty(QMAKE_TARGET_COPYRIGHT):   QMAKE_TARGET_COPYRIGHT   = "Copyright 2026"
         RC_LANG      = 0x0804                    # 简体中文；纯英文项目改 0x0409
         RC_CODEPAGE = 1200 #Unicode
         #RC_CODEPAGE  = 936                       # 字符串含中文时用 GBK；.pro 存 UTF-8 且含中文需自查乱码

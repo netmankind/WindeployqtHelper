@@ -17,6 +17,7 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x050F00
 TEMPLATE = app
 TARGET = WindeployqtHelper
 
+PRODUCT_NAME = "Qt 部署助手"
 # ===================== 版本号 =====================
 # 版本信息集中在 version.h / version.cpp；version_stamp 必须在 include config.pri 之前
 # 打开——该开关的判断发生在 config.pri 被解析时，放在后面打开不会生效。
