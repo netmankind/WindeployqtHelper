@@ -53,6 +53,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 MainWindow::~MainWindow()
 {
     saveSettings();
+    //退出前再清一次：打包其它程序时，对方若已退出这些备份文件就能删掉了
+    cleanupLockedBackups();
     delete ui;
 }
 
@@ -497,6 +499,11 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
             QString targetExe = QDir(outputDir).filePath(QFileInfo(ui->edtExePath->text().trimmed()).fileName());
             runEnigmaVbPack(outputDir, enigmaConsolePath, targetExe, currentQtVersion, currentCompilerType);
         }
+        else
+        {
+            //未封包时部署到此结束，立即尝试清理部署过程中改名让位的备份文件
+            cleanupLockedBackups(outputDir);
+        }
     }
     else
     {
@@ -583,22 +590,41 @@ void MainWindow::restartDeployProcess()
     deployProcess->start();
 }
 
-void MainWindow::cleanupLockedBackups()
+void MainWindow::cleanupLockedBackups(const QString &dirPath)
 {
-    //上次打包因文件占用改名的备份：程序重启后锁已释放，可以安全清理
-    QDir appDir(QCoreApplication::applicationDirPath());
-    const QFileInfoList backupFiles = appDir.entryInfoList(QStringList() << QStringLiteral("*.wdh-locked"), QDir::Files);
+    //被占用改名让位留下的备份：锁一释放就能删，所以在打包结束、封包结束、程序退出时各试一次
+    const QString scanDir = dirPath.isEmpty() ? QCoreApplication::applicationDirPath() : dirPath;
+    QDir          scanQDir(scanDir);
+    if(!scanQDir.exists())
+    {
+        return;
+    }
+    const QFileInfoList backupFiles = scanQDir.entryInfoList(QStringList() << QStringLiteral("*.wdh-locked"), QDir::Files);
+    if(backupFiles.isEmpty())
+    {
+        return;
+    }
+
     int removedCount = 0;
+    int leftCount    = 0;
     for(const QFileInfo &fileInfo: backupFiles)
     {
         if(QFile::remove(fileInfo.absoluteFilePath()))
         {
             ++removedCount;
         }
+        else
+        {
+            ++leftCount;
+        }
     }
     if(removedCount > 0)
     {
-        appendLog(QStringLiteral("🧹 已清理上次打包遗留的占用备份文件 %1 个").arg(removedCount));
+        appendLog(QStringLiteral("🧹 已清理占用备份文件 %1 个").arg(removedCount));
+    }
+    if(leftCount > 0)
+    {
+        appendLog(QStringLiteral("ℹ️ 仍有 %1 个备份文件被占用删不掉，将在下次启动时清理").arg(leftCount));
     }
 }
 
@@ -961,15 +987,27 @@ void MainWindow::copyVcRuntimeDlls(const QString &outputDir)
             continue;    //运行库不保证每个 DLL 都存在，缺哪个跳过哪个
         }
         const QString dstPath = QDir(outputDir).filePath(dllName);
+        QFileInfo     dstFile(dstPath);
+        if(dstFile.exists() && dstFile.size() == srcFile.size())
+        {
+            appendLog(QStringLiteral("ℹ️ VC运行库已存在且大小一致，跳过：%1").arg(dllName));
+            continue;
+        }
         QFile::remove(dstPath);
         if(QFile::copy(srcFile.absoluteFilePath(), dstPath))
         {
             appendLog(QStringLiteral("✅ VC运行库：%1（%2 字节）").arg(dllName).arg(srcFile.size()));
+            continue;
         }
-        else
+        //目标文件被正在运行的程序加载时删不掉：同目录改名让位后再放入新文件
+        const QString lockedPath = dstPath + QStringLiteral(".wdh-locked");
+        QFile::remove(lockedPath);
+        if(QFile::rename(dstPath, lockedPath) && QFile::copy(srcFile.absoluteFilePath(), dstPath))
         {
-            appendLog(QStringLiteral("⚠️ VC运行库复制失败：%1").arg(dllName));
+            appendLog(QStringLiteral("ℹ️ VC运行库被占用，已改名让位后更新：%1").arg(dllName));
+            continue;
         }
+        appendLog(QStringLiteral("⚠️ VC运行库复制失败：%1").arg(dllName));
     }
 }
 
@@ -1115,6 +1153,9 @@ void MainWindow::onEnigmaFinished(int exitCode, QProcess::ExitStatus status)
     }
     enigmaSingleExePath.clear();
     appendLog(QStringLiteral("已删除临时evb工程文件"));
+
+    //封包结束，尝试清理部署时改名让位的备份文件
+    cleanupLockedBackups(ui->edtOutputDir->text().trimmed());
 }
 
 QString MainWindow::escapeXml(const QString &text)

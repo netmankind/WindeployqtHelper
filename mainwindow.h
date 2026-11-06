@@ -93,7 +93,9 @@ private:
     //已加载的 DLL，但允许在同一目录内改名，因此把被锁文件改名让位后重跑即可完成部署。
     int  backupLockedFilesFromOutput();
     void restartDeployProcess();
-    void cleanupLockedBackups();
+    //dirPath 为空时清理程序自身所在目录；打包结束、封包结束、程序退出时都会调用一次，
+    //真正被占用删不掉的文件留到下次启动再清
+    void cleanupLockedBackups(const QString &dirPath = QString());
 
     int         deployRetryCount = 0;    //本次打包因文件占用重跑的次数
     QString     lastWindeployqtPath;     //以下四项用于重跑时复用上次 windeployqt 的启动参数
