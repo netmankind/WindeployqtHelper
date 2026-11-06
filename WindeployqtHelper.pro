@@ -17,7 +17,7 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x050F00
 TEMPLATE = app
 TARGET = WindeployqtHelper
 
-include(config.pri)
+include(QtCommonConfig/config.pri)
 
 # ===================== Qt版本判断 =====================
 contains(QT_VERSION, ^5\..*) {
@@ -37,9 +37,7 @@ win32-msvc* {
 }
 
 # ===================== 拼接输出目录 DESTDIR =====================
-#DESTDIR = $$clean_path($$PWD/../WindeployqtHelper-bin)
-#DESTDIR = $$clean_path($$PWD/../WindeployqtHelper-$${QT_VER}-$${COMPILER}-bin)
-DESTDIR = $$clean_path($$PWD/../WindeployqtHelper-qt$${QT_VERSION}-$${COMPILER}-bin)
+#DESTDIR = $$clean_path($$PWD/../WindeployqtHelper-qt$${QT_VERSION}-$${COMPILER}-bin)
 message("=====================================")
 message("Qt: $${QT_VER}")
 message("COMPILER: $${COMPILER}")
