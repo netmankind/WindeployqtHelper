@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QProcess>
 #include <QSettings>
+#include <QStringList>
 
 class QTextStream;
 
@@ -85,6 +86,20 @@ private:
 
     // ---- 目标exe位数识别：单文件名需要形如 MinGW64 / MSVC64 ----
     QString getExeArchBits(const QString &exePath) const;
+
+    // ---- 被锁文件自愈 ----
+    //windeployqt（Qt5 的 MinGW 运行库分支）对同名 DLL 是先删除再复制，目标程序正在运行时
+    //这些 DLL 被系统锁定，删除失败会让 windeployqt 以退出码 1 结束。Windows 不允许删除或覆盖
+    //已加载的 DLL，但允许在同一目录内改名，因此把被锁文件改名让位后重跑即可完成部署。
+    int  backupLockedFilesFromOutput();
+    void restartDeployProcess();
+    void cleanupLockedBackups();
+
+    int         deployRetryCount = 0;    //本次打包因文件占用重跑的次数
+    QString     lastWindeployqtPath;     //以下四项用于重跑时复用上次 windeployqt 的启动参数
+    QStringList lastDeployArgs;
+    QString     lastDeployWorkDir;
+    QString     lastDeployRuntimeDir;
 
     // ---- VC 运行库复制（MSVC 部署）：windeployqt --compiler-runtime 在新版 VS 上可能找不到 Redist 路径 ----
     //非 const：选择过程会写日志

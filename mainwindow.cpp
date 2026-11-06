@@ -4,6 +4,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QCoreApplication>
+#include <QRegularExpression>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -44,6 +45,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     //记下当前目标exe路径：之后用于判断用户是否真的改了路径，只有改过才让输出目录跟随
     lastExePath = ui->edtExePath->text();
+
+    //清掉上次打包继承下来的占用备份文件（此时锁已释放）
+    cleanupLockedBackups();
 }
 
 MainWindow::~MainWindow()
@@ -429,6 +433,13 @@ void MainWindow::on_btnStartDeploy_clicked()
         deployProcess->setProcessEnvironment(env);
         appendLog(QStringLiteral("ℹ️ 已前置 MinGW 运行库目录到 PATH：%1").arg(mingwRuntimeDir));
     }
+
+    //保存本次启动参数，被锁文件改名让位后需要原样重跑
+    lastWindeployqtPath = windeployqt;
+    lastDeployArgs      = args;
+    lastDeployWorkDir   = qtBinDir;
+    lastDeployRuntimeDir = mingwRuntimeDir;
+    deployRetryCount    = 0;
     deployProcess->start();
 }
 
@@ -463,6 +474,18 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
     }
     else
     {
+        //被锁文件让位后重跑：windeployqt 对 MinGW 运行库是先删后拷，
+        //目标程序正在运行时同名 DLL 删不掉，重跑前把文件改名绕过文件锁
+        if(deployRetryCount < 2)
+        {
+            const int backedUpCount = backupLockedFilesFromOutput();
+            if(backedUpCount > 0)
+            {
+                ++deployRetryCount;
+                restartDeployProcess();
+                return;
+            }
+        }
         appendLog(QStringLiteral("❌ windeployqt失败 exitCode=%1").arg(exitCode));
         //常见失败原因提示：目标exe与所选Qt Bin版本/编译器不匹配
         if(deployOutputBuffer.contains(QStringLiteral("does not seem to be a Qt executable"), Qt::CaseInsensitive))
@@ -470,6 +493,86 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
             appendLog(QStringLiteral("⚠️ 提示：目标exe与所选“Qt Bin目录”版本/编译器不匹配（例如用Qt6的windeployqt部署Qt5程序，或MinGW版windeployqt部署MSVC程序）。"));
             appendLog(QStringLiteral("   请将Qt Bin目录切换为目标exe实际使用的Qt版本与编译器对应的bin目录（含windeployqt.exe），并重新打包。"));
         }
+    }
+}
+
+int MainWindow::backupLockedFilesFromOutput()
+{
+    //windeployqt 失败时会输出「Cannot remove existing file <完整路径>」：把这些文件在同目录内改名，
+    //文件句柄仍指向原文件，运行中的程序不受影响，而同名新文件可以正常写入
+    static const QRegularExpression lockedPattern(QStringLiteral("Cannot remove existing file ([^\\r\\n]+)"));
+    const QString backupSuffix = QStringLiteral(".wdh-locked");
+
+    QStringList lockedFilePaths;
+    QRegularExpressionMatchIterator matchIt = lockedPattern.globalMatch(deployOutputBuffer);
+    while(matchIt.hasNext())
+    {
+        QRegularExpressionMatch match = matchIt.next();
+        const QString         filePath = QDir::fromNativeSeparators(match.captured(1).trimmed());
+        if(!lockedFilePaths.contains(filePath))
+        {
+            lockedFilePaths << filePath;
+        }
+    }
+    if(lockedFilePaths.isEmpty())
+    {
+        return 0;
+    }
+
+    int backedUpCount = 0;
+    for(const QString &filePath: lockedFilePaths)
+    {
+        const QString backupPath = filePath + backupSuffix;
+        if(QFile::exists(backupPath))
+        {
+            QFile::remove(backupPath);    //上次的备份此时已不被占用，先清掉
+        }
+        if(QFile::rename(filePath, backupPath))
+        {
+            ++backedUpCount;
+            appendLog(QStringLiteral("ℹ️ 文件被占用，已改名让位：%1 → %2")
+                          .arg(QFileInfo(filePath).fileName(), QFileInfo(backupPath).fileName()));
+        }
+        else
+        {
+            appendLog(QStringLiteral("⚠️ 无法改名占用文件（可能被其它程序锁定）：%1").arg(filePath));
+        }
+    }
+    return backedUpCount;
+}
+
+void MainWindow::restartDeployProcess()
+{
+    deployOutputBuffer.clear();
+    deployProcess->setProgram(lastWindeployqtPath);
+    deployProcess->setArguments(lastDeployArgs);
+    deployProcess->setWorkingDirectory(lastDeployWorkDir);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if(!lastDeployRuntimeDir.isEmpty())
+    {
+        env.insert(QStringLiteral("PATH"), lastDeployRuntimeDir + QDir::listSeparator() + env.value(QStringLiteral("PATH")));
+    }
+    deployProcess->setProcessEnvironment(env);
+    appendLog(QStringLiteral("↻ 文件让位完成，重新执行 windeployqt（第 %1 次重试）").arg(deployRetryCount));
+    deployProcess->start();
+}
+
+void MainWindow::cleanupLockedBackups()
+{
+    //上次打包因文件占用改名的备份：程序重启后锁已释放，可以安全清理
+    QDir appDir(QCoreApplication::applicationDirPath());
+    const QFileInfoList backupFiles = appDir.entryInfoList(QStringList() << QStringLiteral("*.wdh-locked"), QDir::Files);
+    int removedCount = 0;
+    for(const QFileInfo &fileInfo: backupFiles)
+    {
+        if(QFile::remove(fileInfo.absoluteFilePath()))
+        {
+            ++removedCount;
+        }
+    }
+    if(removedCount > 0)
+    {
+        appendLog(QStringLiteral("🧹 已清理上次打包遗留的占用备份文件 %1 个").arg(removedCount));
     }
 }
 
@@ -647,6 +750,16 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
             }
             else
             {
+                //目标文件被正在运行的程序锁定：同目录改名让位后再放入新文件，
+                //运行中的进程继续用旧句柄，重启后即为新版本
+                const QString lockedPath = dst.absoluteFilePath() + QStringLiteral(".wdh-locked");
+                QFile::remove(lockedPath);
+                if(QFile::rename(dst.absoluteFilePath(), lockedPath)
+                   && QFile::rename(dst.absoluteFilePath() + QStringLiteral(".tmp"), dst.absoluteFilePath()))
+                {
+                    appendLog(QStringLiteral("ℹ️ 运行库被占用，已改名让位后更新：%1").arg(dstPath));
+                    continue;
+                }
                 QFile::remove(dst.absoluteFilePath() + QStringLiteral(".tmp"));
                 appendLog(QStringLiteral("⚠️ 运行库校正失败：无法替换 %1").arg(dstPath));
             }
@@ -1004,6 +1117,11 @@ void MainWindow::appendEvbFolder(QTextStream &stream, const QDir &dir, const QSt
         //兼容新旧单文件命名：旧 xxx_Single.exe、新 xxx_Single-qt<版本>-<编译器>.exe，均不重复打入
         const QString fileName = fileInfo.fileName();
         if(fileName == QStringLiteral("enigma_temp.evb") || (fileName.contains(QStringLiteral("_Single")) && fileName.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)))
+        {
+            continue;
+        }
+        //被占用改名让位留下的旧文件不参与封包：内容已被新文件替代，打入只会增大体积
+        if(fileName.endsWith(QStringLiteral(".wdh-locked")))
         {
             continue;
         }
