@@ -34,6 +34,9 @@ public:
     void runEnigmaVbPack(const QString &sourceDir, const QString &enigmaConsolePath, const QString &targetExe,
                          const QString &qtVersion, const QString &compilerType);
     bool detectQtCompiler(const QString &qtBinDir, QString &compilerType, QString &qtVersion);
+    //打包前先核对「所选 Qt」与「目标 EXE」是否配套：Qt 主版本（Qt5/Qt6）、位数、编译器类型
+    //任一不符就返回 false 并中止，避免用错版本的 Qt 去部署，把不相关的 DLL 拷进输出目录
+    bool checkQtTargetMatch(const QString &exePath, const QString &qtBinDir, const QString &compilerType);
 
 protected:
     //关闭窗口时先结束还在跑的子进程，否则界面消失后主进程会一直等它退出，看起来像“程序没关掉”
@@ -92,6 +95,9 @@ private:
 
     // ---- 目标exe位数识别：单文件名需要形如 MinGW64 / MSVC64 ----
     QString getExeArchBits(const QString &exePath) const;
+    //解析 PE 导入表，取出目标 EXE 真正依赖的 DLL 名。不能直接在文件里搜字符串：
+    //本程序自身代码里就写满了 libgcc_s_seh-1.dll、vcruntime140.dll 这些常量，全文扫描会全部命中
+    QStringList readImportDllNames(const QString &exePath) const;
 
     // ---- 被锁文件自愈 ----
     //windeployqt（Qt5 的 MinGW 运行库分支）对同名 DLL 是先删除再复制，目标程序正在运行时

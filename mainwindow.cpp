@@ -372,6 +372,13 @@ void MainWindow::on_btnStartDeploy_clicked()
     currentQtVersion    = qtVersion;
     currentCompilerType = compilerType;
 
+    //先核对所选 Qt 与目标 EXE 是否配套：不匹配就中止，避免把错误版本的 DLL 拷进输出目录
+    if(!checkQtTargetMatch(exePath, qtBinDir, compilerType))
+    {
+        appendLog(QStringLiteral("❌ 已中止打包：所选 Qt 与目标 EXE 不匹配"));
+        return;
+    }
+
     //输出目录若与目标exe所在目录相同，源exe必须始终保留，防止清空旧目录时删掉原文件
     QFileInfo exeInfo(exePath);
     QDir      outDir(outputDir);
@@ -850,6 +857,101 @@ bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType
     return true;
 }
 
+//打包前核对「所选 Qt」与「目标 EXE」是否配套：不匹配就用错版本的 Qt 去部署，
+//会把不相关的 DLL 拷进输出目录，甚至覆盖掉程序真正需要的那份，所以这里先拦下来
+bool MainWindow::checkQtTargetMatch(const QString &exePath, const QString &qtBinDir, const QString &compilerType)
+{
+    //只看导入表里的真实依赖，不做全文扫描（本程序自身代码里也写满了这些 DLL 名）
+    const QStringList importedDlls = readImportDllNames(exePath);
+    if(importedDlls.isEmpty())
+    {
+        appendLog(QStringLiteral("❌ 无法解析目标 EXE 的导入表，未能校验 Qt 版本：%1")
+                      .arg(QDir::toNativeSeparators(exePath)));
+        return false;
+    }
+
+    const bool targetUsesQt5 = importedDlls.contains(QStringLiteral("Qt5Core.dll"), Qt::CaseInsensitive);
+    const bool targetUsesQt6 = importedDlls.contains(QStringLiteral("Qt6Core.dll"), Qt::CaseInsensitive);
+    //MinGW 的程序动态链接 libgcc/libstdc++，若用了 -static-libgcc -static-libstdc++ 则只剩
+    //libwinpthread-1.dll 这一个 MinGW 特征，所以三个都要看
+    const bool targetIsMinGw = importedDlls.contains(QStringLiteral("libgcc_s_seh-1.dll"), Qt::CaseInsensitive)
+                               || importedDlls.contains(QStringLiteral("libgcc_s_dw2-1.dll"), Qt::CaseInsensitive)
+                               || importedDlls.contains(QStringLiteral("libstdc++-6.dll"), Qt::CaseInsensitive)
+                               || importedDlls.contains(QStringLiteral("libwinpthread-1.dll"), Qt::CaseInsensitive);
+    const bool targetIsMsvc = importedDlls.contains(QStringLiteral("vcruntime140.dll"), Qt::CaseInsensitive)
+                              || importedDlls.contains(QStringLiteral("msvcp140.dll"), Qt::CaseInsensitive);
+
+    //所选 Qt 的版本看 bin 目录里装的是 Qt5Core.dll 还是 Qt6Core.dll，二者不会同时存在
+    QDir qtBin(qtBinDir);
+    QString kitCoreDll;
+    const bool kitUsesQt5 = QFile::exists(qtBin.filePath(QStringLiteral("Qt5Core.dll")));
+    const bool kitUsesQt6 = QFile::exists(qtBin.filePath(QStringLiteral("Qt6Core.dll")));
+    if(kitUsesQt5 && !kitUsesQt6)
+    {
+        kitCoreDll = QStringLiteral("Qt5Core.dll");
+    }
+    else if(kitUsesQt6 && !kitUsesQt5)
+    {
+        kitCoreDll = QStringLiteral("Qt6Core.dll");
+    }
+    else
+    {
+        appendLog(QStringLiteral("⚠️ 无法从 Qt Bin 目录判断所选 Qt 版本（Qt5Core.dll/Qt6Core.dll 缺失或同时存在），跳过版本校验"));
+    }
+
+    //1) Qt 主版本必须一致
+    if(!kitCoreDll.isEmpty())
+    {
+        if(targetUsesQt5 && kitCoreDll == QStringLiteral("Qt6Core.dll"))
+        {
+            appendLog(QStringLiteral("❌ 版本不匹配：目标 EXE 是 Qt5 程序，所选 Qt 是 Qt6（%1），请改选 Qt5 的 bin 目录")
+                          .arg(QDir::toNativeSeparators(qtBinDir)));
+            return false;
+        }
+        if(targetUsesQt6 && kitCoreDll == QStringLiteral("Qt5Core.dll"))
+        {
+            appendLog(QStringLiteral("❌ 版本不匹配：目标 EXE 是 Qt6 程序，所选 Qt 是 Qt5（%1），请改选 Qt6 的 bin 目录")
+                          .arg(QDir::toNativeSeparators(qtBinDir)));
+            return false;
+        }
+        if(!targetUsesQt5 && !targetUsesQt6)
+        {
+            appendLog(QStringLiteral("⚠️ 目标 EXE 未发现 Qt5Core.dll/Qt6Core.dll 依赖（可能是静态链接 Qt），跳过 Qt 版本校验"));
+        }
+    }
+
+    //2) 位数必须一致：目标 EXE 与所选 Qt 的 Core DLL 各读一次 PE 头
+    const QString targetBits = getExeArchBits(exePath);
+    const QString kitBits    = kitCoreDll.isEmpty() ? QString() : getExeArchBits(qtBin.filePath(kitCoreDll));
+    if(!targetBits.isEmpty() && !kitBits.isEmpty() && targetBits != kitBits)
+    {
+        appendLog(QStringLiteral("❌ 位数不匹配：目标 EXE 是 %1 位，所选 Qt 是 %2 位（%3），请改选 %1 位的 Qt")
+                      .arg(targetBits, kitBits, QDir::toNativeSeparators(qtBinDir)));
+        return false;
+    }
+
+    //3) 编译器类型必须一致（目标 EXE 的运行库是静态链接时判不出来，此时不做阻断）
+    if(targetIsMinGw && !targetIsMsvc && compilerType.compare(QStringLiteral("MSVC"), Qt::CaseInsensitive) == 0)
+    {
+        appendLog(QStringLiteral("❌ 编译器不匹配：目标 EXE 依赖 MinGW 运行库（libgcc/libstdc++），所选 Qt 是 MSVC 版，请改选 MinGW 版 Qt"));
+        return false;
+    }
+    if(targetIsMsvc && !targetIsMinGw && compilerType.compare(QStringLiteral("MinGW"), Qt::CaseInsensitive) == 0)
+    {
+        appendLog(QStringLiteral("❌ 编译器不匹配：目标 EXE 依赖 VC 运行库（vcruntime140/msvcp140），所选 Qt 是 MinGW 版，请改选 MSVC 版 Qt"));
+        return false;
+    }
+    if(!targetIsMinGw && !targetIsMsvc)
+    {
+        appendLog(QStringLiteral("ℹ️ 未能从目标 EXE 判断编译器类型（运行库可能静态链接），跳过编译器校验"));
+    }
+
+    appendLog(QStringLiteral("✅ Qt 版本校验通过：目标 EXE 与所选 Qt（%1 / %2 / %3 位）配套")
+                  .arg(kitCoreDll.isEmpty() ? QStringLiteral("版本未知") : kitCoreDll, compilerType,
+                       kitBits.isEmpty() ? QStringLiteral("?") : kitBits));
+    return true;
+}
+
 //定位与所选 Qt Bin 配套的 MinGW 工具链 bin 目录（含 libstdc++-6.dll 等运行库 DLL）
 QString MainWindow::findMinGwRuntimeDir(const QString &qtBinDir) const
 {
@@ -966,6 +1068,129 @@ void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &ru
 }
 
 //读取目标exe的 PE 头判断位数，返回 "64" 或 "32"；不是有效 PE 文件时返回空字符串
+//解析 PE 导入表，返回目标 EXE 真正依赖的 DLL 名（Qt5Core.dll、libgcc_s_seh-1.dll、vcruntime140.dll 等）
+QStringList MainWindow::readImportDllNames(const QString &exePath) const
+{
+    QStringList dllNames;
+    QFile       peFile(exePath);
+    if(!peFile.open(QIODevice::ReadOnly))
+    {
+        return dllNames;
+    }
+    //DOS 头里的 e_lfanew（0x3C 处）指向 PE 头
+    if(peFile.read(2) != QByteArrayLiteral("MZ") || !peFile.seek(0x3C))
+    {
+        return dllNames;
+    }
+    const QByteArray peOffsetBytes = peFile.read(4);
+    if(peOffsetBytes.size() != 4)
+    {
+        return dllNames;
+    }
+    const quint32 peOffset = qFromLittleEndian<quint32>(peOffsetBytes.constData());
+    if(!peFile.seek(peOffset) || peFile.read(4) != QByteArrayLiteral("PE\0\0"))
+    {
+        return dllNames;
+    }
+    //COFF 头：Machine(0) NumberOfSections(2) ... SizeOfOptionalHeader(16)
+    const QByteArray coffHeader = peFile.read(20);
+    if(coffHeader.size() != 20)
+    {
+        return dllNames;
+    }
+    const quint16    sectionCount  = qFromLittleEndian<quint16>(coffHeader.constData() + 2);
+    const quint16    optHeaderSize = qFromLittleEndian<quint16>(coffHeader.constData() + 16);
+    const QByteArray optHeader     = peFile.read(optHeaderSize);
+    if(optHeader.size() != int(optHeaderSize) || optHeaderSize < 120)
+    {
+        return dllNames;
+    }
+    //DataDirectory 起点：PE32 为 96，PE32+ 为 112；第 2 项（索引 1）是导入表
+    const quint16      magic         = qFromLittleEndian<quint16>(optHeader.constData());
+    qint32             dataDirOffset = 0;
+    if(magic == 0x10B)
+    {
+        dataDirOffset = 96;
+    }
+    else if(magic == 0x20B)
+    {
+        dataDirOffset = 112;
+    }
+    else
+    {
+        return dllNames;
+    }
+    const quint32 importRva = qFromLittleEndian<quint32>(optHeader.constData() + dataDirOffset + 8);
+    if(importRva == 0)
+    {
+        return dllNames;    //没有导入表
+    }
+
+    //节表用于把 RVA 换算成文件偏移
+    QList<quint32> sectionVa;
+    QList<quint32> sectionRawPtr;
+    QList<quint32> sectionRawSize;
+    const QByteArray sections = peFile.read(sectionCount * 40);
+    for(int i = 0; i < sectionCount && (i + 1) * 40 <= sections.size(); ++i)
+    {
+        const QByteArray oneSection = sections.mid(i * 40, 40);
+        sectionVa      << qFromLittleEndian<quint32>(oneSection.constData() + 12);    //VirtualAddress
+        sectionRawSize << qFromLittleEndian<quint32>(oneSection.constData() + 16);    //SizeOfRawData
+        sectionRawPtr  << qFromLittleEndian<quint32>(oneSection.constData() + 20);    //PointerToRawData
+    }
+
+    //导入描述符每项 20 字节，Name 字段在偏移 12，全 0 项表示结束
+    for(int descIndex = 0; descIndex < 512; ++descIndex)
+    {
+        qint64 descPos = -1;
+        for(int i = 0; i < sectionVa.size(); ++i)
+        {
+            const quint32 va = sectionVa.at(i);
+            const quint32 rva = importRva + quint32(descIndex) * 20;
+            if(rva >= va && rva < va + sectionRawSize.at(i))
+            {
+                descPos = qint64(sectionRawPtr.at(i)) + qint64(rva - va);
+                break;
+            }
+        }
+        if(descPos < 0 || !peFile.seek(descPos))
+        {
+            break;
+        }
+        const QByteArray descriptor = peFile.read(20);
+        if(descriptor.size() != 20 || descriptor == QByteArray(20, '\0'))
+        {
+            break;
+        }
+        const quint32 nameRva = qFromLittleEndian<quint32>(descriptor.constData() + 12);
+        if(nameRva == 0)
+        {
+            continue;
+        }
+        qint64 namePos = -1;    //DLL 名同样按节表换算偏移
+        for(int i = 0; i < sectionVa.size(); ++i)
+        {
+            const quint32 va = sectionVa.at(i);
+            if(nameRva >= va && nameRva < va + sectionRawSize.at(i))
+            {
+                namePos = qint64(sectionRawPtr.at(i)) + qint64(nameRva - va);
+                break;
+            }
+        }
+        if(namePos < 0 || !peFile.seek(namePos))
+        {
+            continue;
+        }
+        const QByteArray nameBytes = peFile.read(128);    //DLL 名以 \0 结尾
+        const int        zeroIndex = nameBytes.indexOf('\0');
+        if(zeroIndex > 0)
+        {
+            dllNames << QString::fromLatin1(nameBytes.left(zeroIndex));
+        }
+    }
+    return dllNames;
+}
+
 QString MainWindow::getExeArchBits(const QString &exePath) const
 {
     QFile peFile(exePath);
