@@ -421,6 +421,9 @@ void MainWindow::on_btnStartDeploy_clicked()
         appendLog(QStringLiteral("✅ 复制主程序到输出目录：%1").arg(destExe));
     }
 
+    //运行库提前让位：windeployqt 对这些 DLL 是先删后拷，目标程序运行中删不掉就会以退出码 1 结束
+    preBackupRuntimeDlls(outputDir, compilerType, ui->chkCopyVcRuntime->isChecked());
+
     QString     windeployqt = QDir(qtBinDir).filePath(QStringLiteral("windeployqt.exe"));
     QStringList args;
     args << destExe;
@@ -551,6 +554,8 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
                 return;
             }
         }
+        //彻底失败：先把提前让位的运行库改回原名，别让输出目录少 DLL
+        restorePreBackups();
         appendLog(QStringLiteral("❌ windeployqt失败 exitCode=%1").arg(exitCode));
         //常见失败原因提示：目标exe与所选Qt Bin版本/编译器不匹配
         if(deployOutputBuffer.contains(QStringLiteral("does not seem to be a Qt executable"), Qt::CaseInsensitive))
@@ -559,6 +564,78 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
             appendLog(QStringLiteral("   请将Qt Bin目录切换为目标exe实际使用的Qt版本与编译器对应的bin目录（含windeployqt.exe），并重新打包。"));
         }
     }
+}
+
+//启动 windeployqt 之前，把部署目录里会被它「先删后拷」的运行库一次性改名让位：
+//目标程序正在运行时这些 DLL 被锁，删不掉就会以 exitCode=1 结束；逐个等它报错再让位
+//要重试好几轮，提前让位后目标文件不存在，windeployqt 会直接拷贝新文件，一次到位
+void MainWindow::preBackupRuntimeDlls(const QString &outputDir, const QString &compilerType, bool copyVcRuntime)
+{
+    preBackupOriginals.clear();
+
+    QStringList runtimeDllNames;
+    if(compilerType.compare(QStringLiteral("MinGW"), Qt::CaseInsensitive) == 0)
+    {
+        runtimeDllNames << QStringLiteral("libgcc_s_seh-1.dll")
+                        << QStringLiteral("libstdc++-6.dll")
+                        << QStringLiteral("libwinpthread-1.dll");
+    }
+    //VC 运行库只有在勾选「复制VC运行库」时才会被补回（windeployqt --compiler-runtime 或本程序兜底），
+    //否则让位后目录里就缺这几个 DLL，因此跟勾选状态绑定
+    if(copyVcRuntime)
+    {
+        runtimeDllNames << QStringLiteral("vcruntime140.dll")
+                        << QStringLiteral("vcruntime140_1.dll")
+                        << QStringLiteral("msvcp140.dll")
+                        << QStringLiteral("msvcp140_1.dll")
+                        << QStringLiteral("msvcp140_2.dll")
+                        << QStringLiteral("concrt140.dll");
+    }
+
+    const QString backupSuffix = QStringLiteral(".wdh-locked");
+    QDir          dir(outputDir);
+    for(const QString &name: runtimeDllNames)
+    {
+        const QString filePath = dir.filePath(name);
+        if(!QFile::exists(filePath))
+        {
+            continue;
+        }
+        const QString backupPath = filePath + backupSuffix;
+        if(QFile::exists(backupPath))
+        {
+            QFile::remove(backupPath);    //上次的备份此时已不被占用，先清掉
+        }
+        if(QFile::rename(filePath, backupPath))
+        {
+            preBackupOriginals << filePath;
+        }
+    }
+    if(!preBackupOriginals.isEmpty())
+    {
+        appendLog(QStringLiteral("ℹ️ 已提前让位 %1 个运行库（运行中的程序会锁住它们，改名不影响其继续运行）")
+                      .arg(preBackupOriginals.size()));
+    }
+}
+
+//部署彻底失败时把提前让位的运行库改回原名，避免输出目录里少了这些 DLL
+void MainWindow::restorePreBackups()
+{
+    for(const QString &filePath: preBackupOriginals)
+    {
+        const QString backupPath = filePath + QStringLiteral(".wdh-locked");
+        if(!QFile::exists(backupPath))
+        {
+            continue;
+        }
+        QFile::remove(filePath);    //windeployqt 可能已放入同名新文件，先清掉再恢复旧文件
+        QFile::rename(backupPath, filePath);
+    }
+    if(!preBackupOriginals.isEmpty())
+    {
+        appendLog(QStringLiteral("ℹ️ 部署失败，已恢复提前让位的 %1 个运行库").arg(preBackupOriginals.size()));
+    }
+    preBackupOriginals.clear();
 }
 
 int MainWindow::backupLockedFilesFromOutput()
@@ -774,36 +851,53 @@ bool MainWindow::detectQtCompiler(const QString &qtBinDir, QString &compilerType
 //定位与所选 Qt Bin 配套的 MinGW 工具链 bin 目录（含 libstdc++-6.dll 等运行库 DLL）
 QString MainWindow::findMinGwRuntimeDir(const QString &qtBinDir) const
 {
-    //1) Qt5 的 mingw kit（如 E:/Qt/5.15.2/mingw81_64/bin）自身就带运行库 DLL
-    QDir qtBin(qtBinDir);
-    if(QFile::exists(qtBin.filePath(QStringLiteral("libstdc++-6.dll"))))
-    {
-        return qtBin.absolutePath();
-    }
+    QDir          qtBin(qtBinDir);
+    const QString kitStdCppPath = qtBin.filePath(QStringLiteral("libstdc++-6.dll"));
+    const qint64  kitStdCppSize = QFileInfo(kitStdCppPath).size();
 
-    //2) 官方安装布局：qtBinDir = <Qt根>/<版本>/<kit>/bin，工具链在 <Qt根>/Tools/mingw*/bin
+    //1) 优先 <Qt根>/Tools/mingw*/bin：windeployqt 是靠 PATH 里的 g++.exe 定位 MinGW 运行库来源的，
+    //   Qt kit 的 bin 里只有 DLL 没有 g++，只前置它仍会命中系统里别的 MinGW（例如 Strawberry Perl
+    //   自带的 D:\Strawberry\c\bin），部署出来的运行库版本与 Qt 不匹配，下次打包就因旧文件删不掉而失败。
+    //   工具链有多个版本时，按 libstdc++-6.dll 大小与 Qt kit 完全一致来认定同版本
     QDir qtRoot = qtBin;
     qtRoot.cdUp();    //<Qt根>/<版本>/<kit>
     qtRoot.cdUp();    //<Qt根>/<版本>
     qtRoot.cdUp();    //<Qt根>
-    const QDir  toolsDir(qtRoot.filePath(QStringLiteral("Tools")));
+    const QDir toolsDir(qtRoot.filePath(QStringLiteral("Tools")));
     QStringList candidates;
+    QStringList sameVersionCandidates;
     if(toolsDir.exists())
     {
         const QStringList mingwDirs = toolsDir.entryList(QStringList() << QStringLiteral("mingw*"), QDir::Dirs | QDir::NoDotAndDotDot);
         for(const QString &dirName: mingwDirs)
         {
-            QDir binDir(toolsDir.filePath(dirName + QStringLiteral("/bin")));
-            if(QFile::exists(binDir.filePath(QStringLiteral("g++.exe"))) && QFile::exists(binDir.filePath(QStringLiteral("libstdc++-6.dll"))))
+            QDir    binDir(toolsDir.filePath(dirName + QStringLiteral("/bin")));
+            QString gppPath    = binDir.filePath(QStringLiteral("g++.exe"));
+            QString stdCppPath = binDir.filePath(QStringLiteral("libstdc++-6.dll"));
+            if(!QFile::exists(gppPath) || !QFile::exists(stdCppPath))
             {
-                candidates << binDir.absolutePath();
+                continue;
+            }
+            candidates << binDir.absolutePath();
+            if(kitStdCppSize > 0 && QFileInfo(stdCppPath).size() == kitStdCppSize)
+            {
+                sameVersionCandidates << binDir.absolutePath();
             }
         }
     }
+    if(!sameVersionCandidates.isEmpty())
+    {
+        return sameVersionCandidates.first();
+    }
+
+    //2) 没有严格同版本的工具链时，退回 Qt kit 自带运行库：版本与 Qt 一致，能保证程序可运行
+    if(QFile::exists(kitStdCppPath))
+    {
+        return qtBin.absolutePath();
+    }
     if(!candidates.isEmpty())
     {
-        candidates.sort();    //字典序取最后（如 mingw1310_64 > mingw1120_64 > mingw810_64），通常对应最高 Qt 版本
-        return candidates.last();
+        return candidates.first();
     }
     return QString();
 }

@@ -100,11 +100,17 @@ private:
     int  backupLockedFilesFromOutput();
     void restartDeployProcess();
     void stopRunningProcesses();
+    //启动 windeployqt 之前，把部署目录里会被它「先删后拷」的运行库一次性改名让位：
+    //目标程序运行中锁着这些 DLL 时，逐个等它报错再让位要重试好几轮，提前让位则一次到位
+    void preBackupRuntimeDlls(const QString &outputDir, const QString &compilerType, bool copyVcRuntime);
+    //部署失败时把提前让位的运行库改回原名，避免目录里缺 DLL
+    void restorePreBackups();
     //dirPath 为空时清理程序自身所在目录；打包结束、封包结束、程序退出时都会调用一次，
     //真正被占用删不掉的文件留到下次启动再清
     void cleanupLockedBackups(const QString &dirPath = QString());
 
     int         deployRetryCount = 0;    //本次打包因文件占用重跑的次数
+    QStringList preBackupOriginals;      //提前让位的运行库原路径，部署失败时按此恢复
     QString     lastWindeployqtPath;     //以下四项用于重跑时复用上次 windeployqt 的启动参数
     QStringList lastDeployArgs;
     QString     lastDeployWorkDir;
