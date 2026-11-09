@@ -573,7 +573,15 @@ int MainWindow::backupLockedFilesFromOutput()
     while(matchIt.hasNext())
     {
         QRegularExpressionMatch match = matchIt.next();
-        const QString         filePath = QDir::fromNativeSeparators(match.captured(1).trimmed());
+        //windeployqt 在路径后还跟一个冒号作分隔（"...\libgcc_s_seh-1.dll:"），
+        //不剥掉就会拿着一个带冒号、实际不存在的文件名去改名，让位必然失败
+        QString capturedPath = match.captured(1).trimmed();
+        while(capturedPath.endsWith(QLatin1Char(':')))
+        {
+            capturedPath.chop(1);
+            capturedPath = capturedPath.trimmed();
+        }
+        const QString filePath = QDir::fromNativeSeparators(capturedPath);
         if(!lockedFilePaths.contains(filePath))
         {
             lockedFilePaths << filePath;
@@ -592,7 +600,8 @@ int MainWindow::backupLockedFilesFromOutput()
         {
             QFile::remove(backupPath);    //上次的备份此时已不被占用，先清掉
         }
-        if(QFile::rename(filePath, backupPath))
+        QFile lockedFile(filePath);
+        if(lockedFile.exists() && lockedFile.rename(backupPath))
         {
             ++backedUpCount;
             appendLog(QStringLiteral("ℹ️ 文件被占用，已改名让位：%1 → %2")
@@ -600,7 +609,10 @@ int MainWindow::backupLockedFilesFromOutput()
         }
         else
         {
-            appendLog(QStringLiteral("⚠️ 无法改名占用文件（可能被其它程序锁定）：%1").arg(filePath));
+            //日志带上具体系统错误，便于区分「路径解析错」和「被其它进程独占」
+            appendLog(QStringLiteral("⚠️ 无法改名占用文件（%1）：%2")
+                          .arg(lockedFile.exists() ? lockedFile.errorString() : QStringLiteral("文件不存在"),
+                               filePath));
         }
     }
     return backedUpCount;
