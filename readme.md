@@ -9,10 +9,10 @@ Qt 应用一键部署打包助手（GUI 工具）：图形化封装 `windeployqt
 - **图形化配置**：目标 EXE、Qt Bin 目录、输出目录、QML 目录、Enigma 控制台路径、VS 安装根目录，一键开始打包。
 - **输出目录跟随目标 EXE**：选定或填入目标 EXE 后，输出目录自动填成该 EXE 所在目录（手动输入路径同样生效），便于就地打包。
 - **就地打包**：输出目录与目标 EXE 目录相同时，跳过删除/复制主程序，跳过「清空旧目录」，不会误删目录内其它 DLL；目标 EXE 正是正在运行的本程序时，日志会提示运行中的 exe/DLL 被占用、同名文件不会被覆盖。
-- **文件占用自愈**：`windeployqt` 因目标文件正在运行而报 `Cannot remove existing file ...` 时，自动把被占用文件在同目录改名 `*.wdh-locked` 让位后重跑（最多重试 2 次），无需手动关程序。
+- **文件占用自愈**：启动 windeployqt 前先把输出目录里的运行库一次性改名让位，避免它去删正在运行的程序所加载的 DLL；仍报 `Cannot remove existing file ...` 时，再把被占用文件在同目录改名 `*.wdh-locked` 后重跑（最多重试 2 次），无需手动关程序。
 - **选择对话框跟随输入框**：文件/目录选择器自动定位到当前输入框已填的路径（无效才回退到用户主目录）。
-- **自动识别编译器**：调用 `qmake -v` 识别 MinGW / MSVC，并在 windeployqt 失败时提示「版本/编译器不匹配」（如用 Qt6 的 windeployqt 部署 Qt5 程序、MinGW 版部署 MSVC 程序）。
-- **MinGW 运行库来源校正**：windeployqt 从系统 PATH 复制 `libstdc++-6.dll`、`libgcc_s_seh-1.dll`、`libwinpthread-1.dll` 等运行库，PATH 中存在多个 MinGW 时可能复制到错误版本。工具自动定位配套工具链，部署前前置 PATH、部署后强制校正运行库 DLL（详见[技术要点](#mingw-运行库来源校正)）。
+- **打包前 Qt 版本校验**：点「开始打包」后、动任何文件之前，先核对所选 Qt 与目标 EXE 是否配套——Qt 主版本（Qt5/Qt6）、位数（32/64）、编译器（MinGW/MSVC）三项，判定依据是目标 EXE 的 **PE 导入表**里真实依赖的 `Qt5Core.dll`/`Qt6Core.dll`、`libgcc*`/`libwinpthread-1.dll`、`vcruntime140.dll` 等。不匹配直接报错中止、不产生任何文件改动；判不出的情况（静态链接 Qt 或运行库）只提示不阻断（详见[技术要点](#打包前-qt-版本校验)）。
+- **MinGW 运行库来源固定到所选 Qt**：windeployqt 是按 PATH 里的 `g++.exe` 定位运行库来源的，Qt kit 的 bin 没有 g++ 时会命中系统里其它 MinGW（如 Strawberry Perl 自带的 2024 版工具链），版本对不上就会触发「先删后拷」。工具在部署前先让位被占用的运行库、把配套工具链前置 PATH，部署后再用**所选 Qt bin 目录自带的运行库**强制覆盖——哪个 Qt 版本就用哪个的 DLL（详见[技术要点](#mingw-运行库来源校正)）。
 - **复制 VC 运行库**：MSVC 部署时随包带上 `vcruntime140*.dll`、`msvcp140*.dll`、`concrt140.dll`。源优先取 Visual Studio Redist，按 Qt Bin 里的 `msvc<年份>` 选年份最接近的版本；无 VS Redist 时回退 `C:/Windows/System32`（详见[技术要点](#vc-运行库来源选择)）。
 - **安全保护**：
   - 输出目录 = 源 EXE 所在目录时，跳过删除/复制，避免误删原主程序；
@@ -69,7 +69,7 @@ DESTDIR = $$clean_path($$PROJECT_DIR/../$${PROJECT_NAME}-qt$$[QT_VERSION]-$${DIR
 
 ### 版本号
 
-版本号形如 `1.0.0.<编译日期>-<编译时间>`，例如 `1.0.0.20261106-1608`，窗口标题显示为 `Qt 部署助手 v1.0.0.20261106-1608`。日期时间取自编译期的 `__DATE__` / `__TIME__`，`.pro` 中 `CONFIG *= version_stamp` 会在每次构建结束删除 `version.o`，使版本号随每次编译自动更新。
+版本号形如 `1.0.0.<编译日期>-<编译时间>`，例如 `1.0.0.20261109-1303`，窗口标题显示为 `Qt 部署助手 v1.0.0.20261109-1303`。日期时间取自编译期的 `__DATE__` / `__TIME__`，`.pro` 中 `CONFIG *= version_stamp` 会在每次构建结束删除 `version.o`，使版本号随每次编译自动更新。
 
 ## 使用方法
 
@@ -80,7 +80,7 @@ DESTDIR = $$clean_path($$PROJECT_DIR/../$${PROJECT_NAME}-qt$$[QT_VERSION]-$${DIR
 5. **Enigma控制台**（可选）：勾选「启用Enigma单文件打包」后必填 `enigmavbconsole.exe` 路径。
 6. **VS安装目录**（可选）：复制 VC 运行库时用于定位 Redist；首次默认 `C:/Program Files/Microsoft Visual Studio`，VS 装在其它盘时改一次并保存即可。
 7. 点击 **开始打包**，流程：
-   - 复制主程序到输出目录（同目录时自动跳过）→ 执行 windeployqt（失败且为文件占用时改名让位后重试）→ 校正 MinGW 运行库 →（勾选时）复制 VC 运行库 →（可选）Enigma 封包单文件。
+   - **校验所选 Qt 与目标 EXE 是否配套**（不匹配直接中止，不改动任何文件）→ 复制主程序到输出目录（同目录时自动跳过）→ 提前让位被占用的运行库 → 执行 windeployqt（失败且为文件占用时改名让位后重试）→ 用所选 Qt bin 的运行库校正 →（勾选时）复制 VC 运行库 →（可选）Enigma 封包单文件。
 
 打包完成后，输出目录内会生成 `<目标EXE基名>_Single-qt<版本>-<编译器><位数>.exe` 单文件便携版（例如 `WindeployqtHelper_Single-qt6.8.3-MinGW64.exe`），同一目录下不同 Qt 版本/编译器的产物可按文件名区分。
 
@@ -112,6 +112,20 @@ keepFiles=config.ini
 
 ## 技术要点
 
+### 打包前 Qt 版本校验
+
+选错 Qt 的 `bin` 目录，windeployqt 就会把不相关版本的 DLL 拷进输出目录，甚至覆盖掉程序真正需要的那份。所以点「开始打包」后、清空目录/复制主程序/让位运行库之前，先由 `checkQtTargetMatch()` 做三项核对：
+
+| 维度 | 目标 EXE 侧 | 所选 Qt 侧 | 不符时 |
+| --- | --- | --- | --- |
+| Qt 主版本 | 导入表含 `Qt5Core.dll` 还是 `Qt6Core.dll` | `bin` 目录里装的是哪一个（二者不会同时存在） | 报错中止 |
+| 位数 | PE 头 Machine 字段（`0x8664`=64，`0x014C`=32） | 同上，读该 bin 里的 Core DLL | 报错中止 |
+| 编译器 | 含 `libgcc*`/`libstdc++-6.dll`/`libwinpthread-1.dll` 判为 MinGW；含 `vcruntime140*.dll`/`msvcp140*.dll` 判为 MSVC | `qmake -v` 的识别结果 | 报错中止 |
+
+判定依据是**真解析 PE 导入表**（`readImportDllNames()`：DOS 头 → `0x3C` 处 `e_lfanew` → PE 头 → OptionalHeader 的 `DataDirectory[1]` → 节表把 RVA 换算成文件偏移 → 遍历 `IMAGE_IMPORT_DESCRIPTOR` 取 `Name` 字段读 DLL 名），而不是在整个文件里搜 DLL 名。后者在部署工具这类程序上必然失效——本程序源码里就写满了 `libgcc_s_seh-1.dll`、`vcruntime140.dll` 这些常量，字符串会原样进 exe，全文搜索会让一个 Qt5 MinGW 目标同时"命中" Qt5、Qt6、MinGW、MSVC 四项。
+
+判不出来时只打 `⚠️` 不阻断：目标程序静态链接了 Qt（导入表里没有 `QtXCore.dll`），或运行库全静态（既无 `libgcc`/`libwinpthread` 也无 `vcruntime140`）。注意 MinGW 程序用 `-static-libgcc -static-libstdc++` 后导入表只剩 `libwinpthread-1.dll` 一个 MinGW 特征，所以它也被算进编译器判定。
+
 ### 就地打包与文件占用自愈
 
 `windeployqt` 对 Qt 自身 DLL 会先比对内容，相同则输出 `is up to date` 跳过；但对编译器运行库（如 `libgcc_s_seh-1.dll`）是**先删后拷**。输出目录就是目标 EXE 所在目录、而该 EXE 正在运行时，这些文件被系统锁定、删不掉，`windeployqt` 直接以 `exitCode=1` 失败。工具从三个层面处理：
@@ -134,11 +148,21 @@ MSVC 版 exe 在未安装运行库的机器上会因缺少 `vcruntime140.dll` �
 
 ### MinGW 运行库来源校正
 
-`windeployqt` 复制 MinGW 运行库（`libstdc++-6.dll`、`libgcc_s_seh-1.dll`、`libwinpthread-1.dll` 等）时从系统 `PATH` 取文件；若 PATH 含多个 MinGW 目录（如同时安装 Qt5 / Qt6 工具链），可能复制到错误版本。工具分三步保证正确：
+`windeployqt` 复制 MinGW 运行库（`libstdc++-6.dll`、`libgcc_s_seh-1.dll`、`libwinpthread-1.dll`）时，并不是从 Qt kit 的 `bin` 取，而是顺着 `PATH` 找 `g++.exe` 所在的那套工具链。Qt kit 的 `bin` 里只有 DLL、没有 g++，所以只前置它也仍会命中系统里其它 MinGW——典型是 Strawberry Perl 自带的 `D:\Strawberry\c\bin`（740183 / 2304720 / 94355，2024 年文件），与 Qt5 kit 的 76288 / 1417216 / 52224 完全不同。
 
-1. **定位**：`findMinGwRuntimeDir()` 优先取 Qt kit 自带运行库（如 Qt5 的 `mingw81_64\bin`）；Qt6 无自带运行库时向上探测 `Qt/Tools/mingw*` 工具链；
-2. **前置 PATH**：调用 windeployqt 前把配套工具链 `bin` 插入 PATH 首位，让它从正确来源复制；
-3. **强制校正**：部署完成后 `fixMinGwRuntimeDlls()` 用配套版本覆盖运行库 DLL，杜绝错误版本混入部署目录（即使 windeployqt 已复制错；文件被占用时同样改名让位再覆盖）。
+版本一旦不一致，windeployqt 每次判定都要「先删后拷」，撞上正在运行的程序锁定的 DLL 就 `exitCode=1`。工具分三步处理：
+
+1. **部署前让位**：`preBackupRuntimeDlls()` 按编译器类型把输出目录中的同名 DLL 改名为 `*.wdh-locked`（MinGW 三件套；勾选复制 VC 运行库时再加 VC 六件），windeployqt 此时就无需删除任何被占用文件；失败时 `restorePreBackups()` 全部改回原名，目录不会缺文件；
+2. **前置 PATH**：调用 windeployqt 前，把配套工具链 `bin`（`findMinGwRuntimeDir()` 按 `libstdc++-6.dll` 大小与 kit 完全一致来挑选）插到 PATH 首位，让它从正确来源复制；
+3. **固定来源校正**：部署完成后 `fixMinGwRuntimeDlls()` 以**界面上所选 Qt 的 `bin` 目录**为唯一来源覆盖运行库，不再推导、不再去系统里找同名 DLL。MSVC 的 kit `bin` 里没有这些运行库，源文件不存在即跳过，不影响 MSVC 部署。
+
+各版本自带值互不通用，可作为核对依据：
+
+| 来源 | libgcc_s_seh-1 | libstdc++-6 | libwinpthread-1 |
+| --- | --- | --- | --- |
+| `Qt\5.15.2\mingw81_64\bin` | 76288 | 1417216 | 52224 |
+| `Qt\6.8.3\mingw_64\bin` | 109056 | 2243072 | 53248 |
+| Strawberry Perl 自带（错误来源） | 740183 | 2304720 | 94355 |
 
 ### .evb 工程文件（EVB 11.30）
 
@@ -172,7 +196,8 @@ Enigma Virtual Box 11.30 的 `.evb` 工程文件为 **XML 格式**（旧版 INI 
 ### 常见问题
 
 - **`Warning: Cannot find any version of the dxcompiler.dll and dxil.dll`**：纯 QWidgets 程序无需 D3D12 渲染后端，可忽略（该警告仅与 Qt Quick 的 D3D12 后端相关）。
-- **windeployqt 报 `does not seem to be a Qt executable`**：目标 EXE 与所选 Qt Bin 的版本/编译器不匹配，切换为对应的 Qt Bin 目录即可。
+- **日志出现 `❌ 版本不匹配` / `❌ 位数不匹配` / `❌ 编译器不匹配`**：所选 Qt Bin 与目标 EXE 不配套，按日志里写的原因换成对应 Qt 版本/位数的 `bin` 目录。工具在动任何文件之前就中止，输出目录不会被污染。
+- **windeployqt 报 `does not seem to be a Qt executable`**：同样是版本/编译器不匹配，但说明程序绕过了校验（例如目标程序静态链接 Qt、判不出主版本），换对应 Qt Bin 即可。
 - **`Cannot remove existing file ...` 或 `exitCode=1`**：目标目录里的同名 DLL 正被运行中的程序加载。工具会自动改名让位重试；若日志仍报失败，说明文件被其它进程独占，关掉对应程序后重试即可。
 - **VC 运行库复制失败**：同上，目标 DLL 被运行中的程序占用；工具已改为大小一致跳过、不一致改名让位。
 - **重新编译报 `LNK1104: 无法打开文件 ...WindeployqtHelper.exe`**：该 exe 正在运行（哪怕窗口已关，也可能因打包未结束而仍在）。结束对应进程后再编译。
