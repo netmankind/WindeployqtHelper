@@ -522,7 +522,9 @@ void MainWindow::onDeployFinished(int exitCode, QProcess::ExitStatus status)
         appendLog(QStringLiteral("✅ windeployqt执行完成"));
         QString outputDir = ui->edtOutputDir->text().trimmed();
         //windeployqt 完成后校正 MinGW 运行库 DLL 来源，防止输出目录混入从其它 MinGW 目录复制来的版本
-        fixMinGwRuntimeDlls(outputDir, findMinGwRuntimeDir(ui->edtQtBin->text().trimmed()));
+        //运行库来源固定为界面上选的 Qt Bin 目录（该 Qt 版本的 bin 自带配套运行库），
+        //不再去系统里找别的 MinGW，避免混入 Strawberry Perl 之类自带工具链的版本
+        fixMinGwRuntimeDlls(outputDir, ui->edtQtBin->text().trimmed());
         if(ui->chkCopyVcRuntime->isChecked())
         {
             copyVcRuntimeDlls(outputDir);
@@ -902,8 +904,10 @@ QString MainWindow::findMinGwRuntimeDir(const QString &qtBinDir) const
     return QString();
 }
 
-//windeployqt 部署完成后，把输出目录中的 MinGW 运行库 DLL 从配套工具链重新复制覆盖，
-//防止 windeployqt 从 PATH 中其它 MinGW 目录复制来版本不匹配的 DLL
+//windeployqt 部署完成后，用「所选 Qt 版本的 bin 目录」里自带的运行库覆盖输出目录中的同名文件：
+//windeployqt 是靠 PATH 里的 g++.exe 定位运行库来源的，Qt kit 的 bin 没有 g++ 时会命中系统里其它
+//MinGW（例如 Strawberry Perl 自带的 D:\Strawberry\c\bin），版本与 Qt 不匹配。这里路径固定，
+//哪个 Qt 版本就用哪个 bin 里的 DLL，不再推导
 void MainWindow::fixMinGwRuntimeDlls(const QString &outputDir, const QString &runtimeDir)
 {
     if(runtimeDir.isEmpty())
